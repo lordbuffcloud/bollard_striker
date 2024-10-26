@@ -2,9 +2,9 @@
 
 ![Bollard Strike Logo](./bollard.png)
 
-## 🛑 What's Bollard Strike? 
+## 🛑 What's Bollard Striker? 
 
-**Bollard Strike** is your chance to experience what happens when you’re “one of them” who isn’t paying attention and smacks straight into a bollard. Yeah, you know the ones—the short poles that somehow manage to sneak up on you and ruin everyone’s day (especially Security Forces). This game is a tongue-in-cheek look at a super common headache for the SF folks at Wright Pat, so I thought we’d have some fun with it! 🙃
+**Bollard Striker** is your chance to experience what happens when you’re “one of them” who isn’t paying attention and smacks straight into a bollard. Yeah, you know the ones—the short poles that somehow manage to sneak up on you and ruin everyone’s day (especially Security Forces). This game is a tongue-in-cheek look at a super common headache for the SF folks at Wright Pat, so I thought we’d have some fun with it! 🙃
 
 ## 🎯 How to Play
 
