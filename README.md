@@ -1,4 +1,4 @@
-# Bollard Strike Game 🚗💥
+# Bollard Striker Game 🚗💥
 
 ![Bollard Strike Logo](./bollard.png)
 
