@@ -4,7 +4,7 @@ import json
 import os
 import webbrowser
 import datetime
-import hashlib  # {{ edit_1: Import hashlib for hashing }}
+import hashlib  # Import hashlib for hashing
 
 # Initialize Pygame
 pygame.init()
@@ -83,7 +83,7 @@ button_font = pygame.font.SysFont("Arial", 36)
 credit_font = pygame.font.SysFont("Arial", 20)
 
 # Secret key for hashing (keep this secret!)
-SECRET_KEY = "your_very_secret_key"  # {{ edit_2: Define a secret key }}
+SECRET_KEY = "your_very_secret_key"  # Define a secret key
 
 # Leaderboard file
 LEADERBOARD_FILE = 'leaderboard.json'
@@ -93,15 +93,20 @@ visitor_x = SCREEN_WIDTH // 2 - 50  # Centered horizontally (larger visitor)
 visitor_y = SCREEN_HEIGHT - 150  # Starting closer to the bottom
 visitor_speed = 7  # Increase movement speed
 
+# Health and score
+visitor_health = 3
+score = 0
+
+# Initialize progression variables
+current_level = 1
+level_threshold = 10  # Points required to level up
+score_multiplier = 1  # Multiplier based on level
+
 # Bollard properties
 bollard_width = 50
 bollard_height = 50
 bollard_speed = 7
 bollard_list = []
-
-# Health and score
-visitor_health = 3
-score = 0
 
 # Add initial bollards
 for _ in range(5):
@@ -192,83 +197,6 @@ class Button:
         if self.rect.collidepoint(mouse_pos) and sound_enabled and click_sound:
             click_sound.play()
         return self.rect.collidepoint(mouse_pos)
-
-# Function to display the landing page with enhanced styling
-def show_landing_page():
-    global running, sound_enabled
-    # Define buttons with updated positions and sizes for better spacing
-    start_button = Button(
-        rect=(SCREEN_WIDTH // 2 - 150, SCREEN_HEIGHT // 2, 300, 80),  # Increased width for better visibility
-        color=BUTTON_COLOR,
-        text="Start"
-    )
-    leaderboard_button = Button(
-        rect=(SCREEN_WIDTH // 2 - 200, SCREEN_HEIGHT // 2 + 120, 400, 80),  # Increased width and adjusted position
-        color=BUTTON_COLOR,
-        text="View Leaderboard"
-    )
-    toggle_sound_button = Button(
-        rect=(SCREEN_WIDTH // 2 - 125, SCREEN_HEIGHT // 2 + 240, 250, 80),  # Increased size for better text fit
-        color=BUTTON_COLOR,
-        text="Sound: Off"  # Initial label based on sound_enabled
-    )
-    # GitHub Link
-    repo_rect = pygame.Rect(SCREEN_WIDTH // 2 - 280, SCREEN_HEIGHT // 2 + 340, 560, 20)
-
-    waiting = True
-    while waiting:
-        screen.fill(PRIMARY_BACKGROUND)  # Updated background color for consistency
-
-        # Render texts
-        title_text = title_font.render("You Are Approaching WPAFB Gate", True, TEXT_PRIMARY)
-        subtitle_text = subtitle_font.render("Good Luck!", True, TEXT_PRIMARY)
-        created_by_text = credit_font.render("Created by SSgt King", True, TEXT_PRIMARY)
-        repo_text = credit_font.render("Click here to see the project -> github.com/lordbuffcloud/bollard_striker", True, BOLT_BLUE)
-
-        # Position texts
-        screen.blit(title_text, (SCREEN_WIDTH // 2 - title_text.get_width() // 2, SCREEN_HEIGHT // 2 - 250))
-        screen.blit(subtitle_text, (SCREEN_WIDTH // 2 - subtitle_text.get_width() // 2, SCREEN_HEIGHT // 2 - 180))
-
-        # Update toggle sound button label based on sound state
-        toggle_sound_button.text = "Sound: On" if sound_enabled else "Sound: Off"
-
-        # Draw buttons
-        mouse_pos = pygame.mouse.get_pos()
-        start_button.hovered = start_button.is_hovered(mouse_pos)
-        leaderboard_button.hovered = leaderboard_button.is_hovered(mouse_pos)
-        toggle_sound_button.hovered = toggle_sound_button.is_hovered(mouse_pos)
-        start_button.draw(screen)
-        leaderboard_button.draw(screen)
-        toggle_sound_button.draw(screen)
-
-        # Draw credits and GitHub link
-        screen.blit(created_by_text, (SCREEN_WIDTH // 2 - created_by_text.get_width() // 2, SCREEN_HEIGHT // 2 + 340))
-        screen.blit(repo_text, (SCREEN_WIDTH // 2 - repo_text.get_width() // 2, SCREEN_HEIGHT // 2 + 360))
-        pygame.draw.rect(screen, METALLIC_SILVER, repo_rect, 1)  # Underline for GitHub link
-
-        pygame.display.flip()
-
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                pygame.quit()
-                exit()
-            elif event.type == pygame.MOUSEBUTTONDOWN:
-                if start_button.is_clicked(mouse_pos):
-                    if sound_enabled:
-                        pygame.mixer.music.play(-1)  # Ensure music is playing when starting
-                    waiting = False  # Start the game
-                elif leaderboard_button.is_clicked(mouse_pos):
-                    show_leaderboard()  # Show leaderboard when clicked
-                elif toggle_sound_button.is_clicked(mouse_pos):
-                    sound_enabled = not sound_enabled  # Toggle sound state
-                    toggle_sound_button.text = "Sound: On" if sound_enabled else "Sound: Off"
-                    if sound_enabled:
-                        pygame.mixer.music.play(-1)  # Play background music
-                    else:
-                        pygame.mixer.music.pause()  # Pause background music
-                # Detecting click on the GitHub link
-                if repo_rect.collidepoint(mouse_pos):
-                    webbrowser.open("https://github.com/lordbuffcloud/bollard_striker")
 
 # Function to ask for player's name and update the leaderboard
 def get_player_name():
@@ -503,6 +431,90 @@ def main_game():
 
         pygame.display.flip()
         clock.tick(60)
+
+# Function to display the landing page with enhanced styling
+def show_landing_page():
+    global running, sound_enabled
+    # Define buttons with updated positions and sizes for better spacing
+    start_button = Button(
+        rect=(SCREEN_WIDTH // 2 - 150, SCREEN_HEIGHT // 2 - 100, 300, 80),
+        color=BUTTON_COLOR,
+        text="Start"
+    )
+    leaderboard_button = Button(
+        rect=(SCREEN_WIDTH // 2 - 200, SCREEN_HEIGHT // 2, 400, 80),
+        color=BUTTON_COLOR,
+        text="View Leaderboard"
+    )
+    toggle_sound_button = Button(
+        rect=(SCREEN_WIDTH // 2 - 125, SCREEN_HEIGHT // 2 + 100, 250, 80),
+        color=BUTTON_COLOR,
+        text="Sound: Off"
+    )
+
+    waiting = True
+    while waiting:
+        screen.fill(PRIMARY_BACKGROUND)
+
+        # Render texts
+        title_text = title_font.render("You Are Approaching WPAFB Gate", True, TEXT_PRIMARY)
+        subtitle_text = subtitle_font.render("Good Luck!", True, TEXT_PRIMARY)
+        created_by_text = credit_font.render("Created by SSgt King", True, TEXT_PRIMARY)
+        repo_text = credit_font.render("Click here to see the project -> github.com/lordbuffcloud/bollard_striker", True, BOLT_BLUE)
+
+        # Calculate GitHub link box size based on text width
+        repo_text_width = repo_text.get_width()
+        repo_rect = pygame.Rect(
+            SCREEN_WIDTH // 2 - (repo_text_width + 20) // 2,  # Center horizontally with padding
+            SCREEN_HEIGHT - 70,                                # Vertical position
+            repo_text_width + 20,                             # Width with padding
+            25                                                # Height
+        )
+
+        # Position texts - Moved everything up
+        screen.blit(title_text, (SCREEN_WIDTH // 2 - title_text.get_width() // 2, 50))
+        screen.blit(subtitle_text, (SCREEN_WIDTH // 2 - subtitle_text.get_width() // 2, 120))
+
+        # Update toggle sound button label based on sound state
+        toggle_sound_button.text = "Sound: On" if sound_enabled else "Sound: Off"
+
+        # Draw buttons
+        mouse_pos = pygame.mouse.get_pos()
+        start_button.hovered = start_button.is_hovered(mouse_pos)
+        leaderboard_button.hovered = leaderboard_button.is_hovered(mouse_pos)
+        toggle_sound_button.hovered = toggle_sound_button.is_hovered(mouse_pos)
+        start_button.draw(screen)
+        leaderboard_button.draw(screen)
+        toggle_sound_button.draw(screen)
+
+        # Draw credits and GitHub link - Adjusted positioning
+        screen.blit(created_by_text, (SCREEN_WIDTH // 2 - created_by_text.get_width() // 2, SCREEN_HEIGHT - 100))
+        screen.blit(repo_text, (repo_rect.x + 10, repo_rect.y))  # Add padding to text position
+        pygame.draw.rect(screen, METALLIC_SILVER, repo_rect, 1)  # Draw box around link
+
+        pygame.display.flip()
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                exit()
+            elif event.type == pygame.MOUSEBUTTONDOWN:
+                if start_button.is_clicked(mouse_pos):
+                    if sound_enabled:
+                        pygame.mixer.music.play(-1)
+                    waiting = False
+                elif leaderboard_button.is_clicked(mouse_pos):
+                    show_leaderboard()
+                elif toggle_sound_button.is_clicked(mouse_pos):
+                    sound_enabled = not sound_enabled
+                    toggle_sound_button.text = "Sound: On" if sound_enabled else "Sound: Off"
+                    if sound_enabled:
+                        pygame.mixer.music.play(-1)
+                    else:
+                        pygame.mixer.music.pause()
+                # Detecting click on the GitHub link
+                if repo_rect.collidepoint(mouse_pos):
+                    webbrowser.open("https://github.com/lordbuffcloud/bollard_striker")
 
 # Start the game by showing the landing page
 show_landing_page()
