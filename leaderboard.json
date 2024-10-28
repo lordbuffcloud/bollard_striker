@@ -1,1 +1,11 @@
-[{"name": "civilian", "score": 0}]
+{
+    "entries": [
+        {
+            "name": "civilian",
+            "score": 0,
+            "level": 1,
+            "date": "2023-10-05 12:00:00"
+        }
+    ],
+    "hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+}
