@@ -34,11 +34,13 @@
   // Game State
   let soundEnabled = false;
   let currentLevel = 1;
-  let levelThreshold = 10;
-  let scoreMultiplier = 1;
+  let levelThreshold = 10; // retained for display compatibility
+  let scoreMultiplier = 1; // retained for display compatibility
   let score = 0;
   let health = 3;
   let running = false;
+  let streak = 0;
+  let bestStreak = 0;
 
   // Player
   const player = {
@@ -46,20 +48,33 @@
     height: 100,
     x: Math.floor(screen.width / 2) - 50,
     y: screen.height - 150,
-    speed: 7,
+    // pixels per second
+    speed: 420,
     leftPressed: false,
     rightPressed: false
   };
 
   // Bollards
   const bollards = [];
-  const bollard = { width: 50, height: 50, speed: 7 };
+  const bollard = { width: 50, height: 50, speed: 90 }; // pixels per second (slow start)
   function initBollards() {
     bollards.length = 0;
     for (let i = 0; i < 5; i += 1) {
       const x = Math.floor(Math.random() * (screen.width - bollard.width));
       const y = Math.floor(-50 - Math.random() * 100);
       bollards.push({ x, y });
+    }
+  }
+
+  // Shield power-up
+  const shield = { active: false, visible: false, x: 0, y: 0, size: 24, vy: 120 };
+  function maybeSpawnShield() {
+    if (shield.visible || shield.active) return;
+    // ~8% chance per dodged bollard
+    if (Math.random() < 0.08) {
+      shield.visible = true;
+      shield.x = Math.floor(16 + Math.random() * (screen.width - 32));
+      shield.y = -shield.size;
     }
   }
 
@@ -85,14 +100,18 @@
 
   // Leaderboard using localStorage
   const LB_KEY = 'bollard-striker-leaderboard-v1';
+  const DEFAULT_LB = [
+    { name: 'woodpecker', score: -3, level: 1, date: 'Lore' }
+  ];
   function getLeaderboard() {
     try {
       const raw = localStorage.getItem(LB_KEY);
-      if (!raw) return [];
+      if (!raw) return DEFAULT_LB;
       const parsed = JSON.parse(raw);
-      return Array.isArray(parsed) ? parsed : [];
+      if (!Array.isArray(parsed) || parsed.length === 0) return DEFAULT_LB;
+      return parsed;
     } catch {
-      return [];
+      return DEFAULT_LB;
     }
   }
   function saveLeaderboard(entries) {
@@ -119,12 +138,14 @@
   function rectsOverlap(ax, ay, aw, ah, bx, by, bw, bh) {
     return ax < bx + bw && ax + aw > bx && ay < by + bh && ah + ay > by;
   }
-  function increaseDifficultyIfNeeded() {
-    if (score >= levelThreshold * currentLevel) {
-      bollard.speed += 1;
-      currentLevel += 1;
-      scoreMultiplier += 0.5;
-    }
+  function recalcDifficulty() {
+    // Gentle ramp: +12 px/s every 6 points, capped increment
+    const incrementSteps = Math.floor(score / 6);
+    const target = 90 + Math.min(20, incrementSteps) * 12; // cap +240
+    bollard.speed = target;
+    // Derive a level for display (every 10 points)
+    currentLevel = Math.max(1, Math.floor(score / 10) + 1);
+    scoreMultiplier = 1 + Math.min(1.5, streak * 0.02); // soft bonus from combo
   }
   function playClick() {
     if (!soundEnabled) return;
@@ -164,29 +185,42 @@
     ctx.fillText(`Health: ${health}`, 10, 40);
     ctx.fillStyle = COLORS.NEON_GREEN;
     ctx.fillText(`Level: ${currentLevel}`, 10, 70);
+    // Combo and shield
+    ctx.fillStyle = COLORS.ELECTRIC_ORANGE;
+    ctx.fillText(`Streak: ${streak}`, 10, 100);
+    ctx.fillStyle = shield.active ? COLORS.BOLT_BLUE : '#cccccc';
+    ctx.fillText(`Shield: ${shield.active ? 'Ready' : '—'}`, 10, 130);
     // Separator
     ctx.strokeStyle = COLORS.METALLIC_SILVER;
     ctx.beginPath();
-    ctx.moveTo(10, 100);
-    ctx.lineTo(screen.width - 10, 100);
+    ctx.moveTo(10, 160);
+    ctx.lineTo(screen.width - 10, 160);
     ctx.stroke();
   }
 
-  function update() {
+  function update(dt) {
     if (!running) return;
 
     // Move player
-    if (player.leftPressed && player.x > 0) player.x -= player.speed;
-    if (player.rightPressed && player.x < screen.width - player.width) player.x += player.speed;
+    if (player.leftPressed && player.x > 0) player.x -= player.speed * dt;
+    if (player.rightPressed && player.x < screen.width - player.width) player.x += player.speed * dt;
+    // clamp
+    if (player.x < 0) player.x = 0;
+    if (player.x > screen.width - player.width) player.x = screen.width - player.width;
 
     // Move bollards
     for (const b of bollards) {
-      b.y += bollard.speed;
+      b.y += bollard.speed * dt;
       if (b.y > screen.height) {
         b.y = Math.floor(-50 - Math.random() * 100);
         b.x = Math.floor(Math.random() * (screen.width - bollard.width));
-        score += 1 * scoreMultiplier;
-        increaseDifficultyIfNeeded();
+        // scoring with combo
+        streak += 1;
+        bestStreak = Math.max(bestStreak, streak);
+        const comboBonus = 1 + Math.min(10, Math.floor(streak / 5));
+        score += comboBonus;
+        recalcDifficulty();
+        maybeSpawnShield();
       }
     }
 
@@ -194,13 +228,34 @@
     for (const b of bollards) {
       if (rectsOverlap(b.x, b.y, bollard.width, bollard.height, player.x, player.y, player.width, player.height)) {
         playCollision();
-        health -= 1;
-        // reset bollards
-        for (const r of bollards) {
-          r.y = Math.floor(-50 - Math.random() * 100);
-          r.x = Math.floor(Math.random() * (screen.width - bollard.width));
+        if (shield.active) {
+          // Consume shield, keep playing
+          shield.active = false;
+        } else {
+          health -= 1;
+          streak = 0;
+          // reset bollards
+          for (const r of bollards) {
+            r.y = Math.floor(-50 - Math.random() * 100);
+            r.x = Math.floor(Math.random() * (screen.width - bollard.width));
+          }
         }
         break;
+      }
+    }
+
+    // Power-up movement and pickup
+    if (shield.visible) {
+      shield.y += shield.vy * dt;
+      // pickup check (simple AABB)
+      if (rectsOverlap(shield.x - shield.size / 2, shield.y - shield.size / 2, shield.size, shield.size,
+        player.x, player.y, player.width, player.height)) {
+        shield.visible = false;
+        shield.active = true;
+        playClick();
+      }
+      if (shield.y - shield.size / 2 > screen.height) {
+        shield.visible = false;
       }
     }
 
@@ -225,12 +280,35 @@
       ctx.drawImage(bollardImg, b.x, b.y, bollard.width, bollard.height);
     }
 
+    // Shield power-up rendering
+    if (shield.visible) {
+      ctx.save();
+      ctx.translate(shield.x, shield.y);
+      // glow
+      const gradient = ctx.createRadialGradient(0, 0, 2, 0, 0, shield.size);
+      gradient.addColorStop(0, 'rgba(70,130,180,0.95)');
+      gradient.addColorStop(1, 'rgba(70,130,180,0.05)');
+      ctx.fillStyle = gradient;
+      ctx.beginPath();
+      ctx.arc(0, 0, shield.size, 0, Math.PI * 2);
+      ctx.fill();
+      // core
+      ctx.fillStyle = COLORS.BOLT_BLUE;
+      ctx.beginPath();
+      ctx.arc(0, 0, Math.max(8, shield.size * 0.45), 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
     // HUD
     drawHUD();
   }
 
-  function loop() {
-    update();
+  let lastTime = performance.now();
+  function loop(now) {
+    const dt = Math.min(0.05, (now - lastTime) / 1000); // clamp dt to avoid spikes
+    lastTime = now;
+    update(dt);
     draw();
     requestAnimationFrame(loop);
   }
@@ -286,7 +364,7 @@
 
   // Kick things off
   initBollards();
-  loop();
+  requestAnimationFrame(loop);
 })();
 
 
