@@ -41,6 +41,8 @@
   let running = false;
   let streak = 0;
   let bestStreak = 0;
+  let particles = []; // For visual effects
+  let screenShake = { x: 0, y: 0, intensity: 0 }; // Screen shake on collision
 
   // Player
   const player = {
@@ -56,7 +58,7 @@
 
   // Bollards
   const bollards = [];
-  const bollard = { width: 50, height: 50, speed: 90 }; // pixels per second (slow start)
+  const bollard = { width: 50, height: 50, speed: 150 }; // pixels per second (better starting speed)
   function initBollards() {
     bollards.length = 0;
     for (let i = 0; i < 5; i += 1) {
@@ -70,8 +72,8 @@
   const shield = { active: false, visible: false, x: 0, y: 0, size: 24, vy: 120 };
   function maybeSpawnShield() {
     if (shield.visible || shield.active) return;
-    // ~8% chance per dodged bollard
-    if (Math.random() < 0.08) {
+    // 12% chance per dodged bollard (more frequent power-ups)
+    if (Math.random() < 0.12) {
       shield.visible = true;
       shield.x = Math.floor(16 + Math.random() * (screen.width - 32));
       shield.y = -shield.size;
@@ -100,8 +102,10 @@
 
   // Leaderboard using localStorage
   const LB_KEY = 'bollard-striker-leaderboard-v1';
+  // Woodpecker's eternal shame - NEVER REMOVE THIS!
+  const WOODPECKER_ENTRY = { name: 'WOODPECKER', score: -3, level: 1, date: 'Eternal Lore' };
   const DEFAULT_LB = [
-    { name: 'woodpecker', score: -3, level: 1, date: 'Lore' }
+    WOODPECKER_ENTRY
   ];
   function getLeaderboard() {
     try {
@@ -109,13 +113,22 @@
       if (!raw) return DEFAULT_LB;
       const parsed = JSON.parse(raw);
       if (!Array.isArray(parsed) || parsed.length === 0) return DEFAULT_LB;
+      
+      // ALWAYS ensure Woodpecker is in the leaderboard at -3
+      const hasWoodpecker = parsed.some(e => e.name.toLowerCase() === 'woodpecker');
+      if (!hasWoodpecker) {
+        return [WOODPECKER_ENTRY, ...parsed].sort((a, b) => b.score - a.score);
+      }
       return parsed;
     } catch {
       return DEFAULT_LB;
     }
   }
   function saveLeaderboard(entries) {
-    const top = [...entries].sort((a, b) => b.score - a.score).slice(0, 5);
+    // Ensure Woodpecker's eternal shame is always preserved
+    const entriesWithoutWoodpecker = entries.filter(e => e.name.toLowerCase() !== 'woodpecker');
+    const allEntries = [WOODPECKER_ENTRY, ...entriesWithoutWoodpecker];
+    const top = allEntries.sort((a, b) => b.score - a.score).slice(0, 6); // Allow 6 to ensure Woodpecker always fits
     localStorage.setItem(LB_KEY, JSON.stringify(top));
   }
   function renderLeaderboard() {
@@ -139,13 +152,13 @@
     return ax < bx + bw && ax + aw > bx && ay < by + bh && ah + ay > by;
   }
   function recalcDifficulty() {
-    // Gentle ramp: +12 px/s every 6 points, capped increment
-    const incrementSteps = Math.floor(score / 6);
-    const target = 90 + Math.min(20, incrementSteps) * 12; // cap +240
+    // Progressive difficulty: +15 px/s every 5 points, reasonable cap
+    const incrementSteps = Math.floor(score / 5);
+    const target = 150 + Math.min(25, incrementSteps) * 15; // cap +375 px/s
     bollard.speed = target;
-    // Derive a level for display (every 10 points)
-    currentLevel = Math.max(1, Math.floor(score / 10) + 1);
-    scoreMultiplier = 1 + Math.min(1.5, streak * 0.02); // soft bonus from combo
+    // Derive a level for display (every 8 points for more frequent level-ups)
+    currentLevel = Math.max(1, Math.floor(score / 8) + 1);
+    scoreMultiplier = 1 + Math.min(2.0, streak * 0.03); // better bonus from streaks
   }
   function playClick() {
     if (!soundEnabled) return;
@@ -161,11 +174,11 @@
     score = 0;
     health = 3;
     currentLevel = 1;
-    levelThreshold = 10;
+    levelThreshold = 8;
     scoreMultiplier = 1;
     player.x = Math.floor(screen.width / 2) - 50;
     player.y = screen.height - 150;
-    bollard.speed = 7;
+    bollard.speed = 150;
     initBollards();
   }
 
@@ -178,24 +191,46 @@
 
   function drawHUD() {
     ctx.fillStyle = COLORS.WHITE;
-    ctx.font = '20px Arial';
+    ctx.font = 'bold 22px Arial';
     ctx.textBaseline = 'top';
     ctx.fillText(`Score: ${Math.floor(score * scoreMultiplier)}`, 10, 10);
-    ctx.fillStyle = COLORS.CAUTION_YELLOW;
+    
+    // Health with color coding and warning
+    ctx.fillStyle = health <= 1 ? COLORS.DEEP_RED : (health <= 2 ? COLORS.CAUTION_YELLOW : COLORS.NEON_GREEN);
     ctx.fillText(`Health: ${health}`, 10, 40);
+    if (health <= 1) {
+      ctx.fillStyle = 'rgba(178, 34, 34, 0.3)';
+      ctx.fillRect(0, 0, screen.width, screen.height); // Red overlay warning
+    }
+    
     ctx.fillStyle = COLORS.NEON_GREEN;
     ctx.fillText(`Level: ${currentLevel}`, 10, 70);
-    // Combo and shield
-    ctx.fillStyle = COLORS.ELECTRIC_ORANGE;
-    ctx.fillText(`Streak: ${streak}`, 10, 100);
+    
+    // Enhanced combo display with color scaling
+    const streakColor = streak > 20 ? COLORS.NEON_GREEN : streak > 10 ? COLORS.CAUTION_YELLOW : COLORS.ELECTRIC_ORANGE;
+    ctx.fillStyle = streakColor;
+    ctx.fillText(`Streak: ${streak}${streak > 0 ? ' 🔥' : ''}`, 10, 100);
+    
     ctx.fillStyle = shield.active ? COLORS.BOLT_BLUE : '#cccccc';
-    ctx.fillText(`Shield: ${shield.active ? 'Ready' : '—'}`, 10, 130);
-    // Separator
+    ctx.fillText(`Shield: ${shield.active ? '🛡️ Ready' : '—'}`, 10, 130);
+    
+    // Best streak display
+    if (bestStreak > 0) {
+      ctx.fillStyle = COLORS.METALLIC_SILVER;
+      ctx.font = '16px Arial';
+      ctx.fillText(`Best Streak: ${bestStreak}`, screen.width - 150, 10);
+      ctx.font = 'bold 22px Arial';
+    }
+    
+    // Separator with glow effect
     ctx.strokeStyle = COLORS.METALLIC_SILVER;
+    ctx.shadowColor = COLORS.BOLT_BLUE;
+    ctx.shadowBlur = 2;
     ctx.beginPath();
     ctx.moveTo(10, 160);
     ctx.lineTo(screen.width - 10, 160);
     ctx.stroke();
+    ctx.shadowBlur = 0;
   }
 
   function update(dt) {
@@ -217,8 +252,21 @@
         // scoring with combo
         streak += 1;
         bestStreak = Math.max(bestStreak, streak);
-        const comboBonus = 1 + Math.min(10, Math.floor(streak / 5));
+        const comboBonus = 1 + Math.min(15, Math.floor(streak / 4)); // Better combo scaling
         score += comboBonus;
+        
+        // Add particles for successful dodge
+        for (let i = 0; i < 3; i++) {
+          particles.push({
+            x: b.x + bollard.width / 2,
+            y: b.y + bollard.height / 2,
+            vx: (Math.random() - 0.5) * 100,
+            vy: (Math.random() - 0.5) * 100,
+            life: 1.0,
+            color: streak > 10 ? COLORS.NEON_GREEN : COLORS.CAUTION_YELLOW
+          });
+        }
+        
         recalcDifficulty();
         maybeSpawnShield();
       }
@@ -231,9 +279,33 @@
         if (shield.active) {
           // Consume shield, keep playing
           shield.active = false;
+          // Add shield break particles
+          for (let i = 0; i < 8; i++) {
+            particles.push({
+              x: player.x + player.width / 2,
+              y: player.y + player.height / 2,
+              vx: (Math.random() - 0.5) * 200,
+              vy: (Math.random() - 0.5) * 200,
+              life: 1.0,
+              color: COLORS.BOLT_BLUE
+            });
+          }
         } else {
           health -= 1;
           streak = 0;
+          // Screen shake on damage
+          screenShake.intensity = 10;
+          // Add damage particles
+          for (let i = 0; i < 12; i++) {
+            particles.push({
+              x: player.x + player.width / 2,
+              y: player.y + player.height / 2,
+              vx: (Math.random() - 0.5) * 300,
+              vy: (Math.random() - 0.5) * 300,
+              life: 1.5,
+              color: COLORS.DEEP_RED
+            });
+          }
           // reset bollards
           for (const r of bollards) {
             r.y = Math.floor(-50 - Math.random() * 100);
@@ -259,18 +331,41 @@
       }
     }
 
+    // Update particles
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.life -= dt;
+      if (p.life <= 0) {
+        particles.splice(i, 1);
+      }
+    }
+    
+    // Update screen shake
+    if (screenShake.intensity > 0) {
+      screenShake.x = (Math.random() - 0.5) * screenShake.intensity;
+      screenShake.y = (Math.random() - 0.5) * screenShake.intensity;
+      screenShake.intensity *= 0.85; // Decay
+      if (screenShake.intensity < 0.1) screenShake.intensity = 0;
+    }
+
     if (health <= 0) {
       running = false;
       const finalScore = Math.floor(score * scoreMultiplier);
-      el.finalScore.textContent = `Your Final Score: ${finalScore}`;
+      el.finalScore.textContent = `Your Final Score: ${finalScore} (Best Streak: ${bestStreak})`;
       el.finalLevel.textContent = `You Reached Level: ${currentLevel}`;
       showOverlay('gameOver');
     }
   }
 
   function draw() {
+    ctx.save();
+    // Apply screen shake
+    ctx.translate(screenShake.x, screenShake.y);
+    
     ctx.fillStyle = COLORS.PRIMARY_BACKGROUND;
-    ctx.fillRect(0, 0, screen.width, screen.height);
+    ctx.fillRect(-screenShake.x, -screenShake.y, screen.width + Math.abs(screenShake.x) * 2, screen.height + Math.abs(screenShake.y) * 2);
 
     // Player
     ctx.drawImage(visitorImg, player.x, player.y, player.width, player.height);
@@ -300,7 +395,20 @@
       ctx.restore();
     }
 
-    // HUD
+    // Draw particles
+    for (const p of particles) {
+      const alpha = Math.max(0, p.life);
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 3 * alpha, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1.0;
+    
+    ctx.restore(); // Restore from screen shake transform
+    
+    // HUD (drawn without screen shake)
     drawHUD();
   }
 
