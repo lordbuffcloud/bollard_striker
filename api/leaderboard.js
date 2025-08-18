@@ -16,7 +16,7 @@ async function kvPipeline(commands) {
       Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json'
     },
-    body: JSON.stringify(commands)
+    body: JSON.stringify({ commands })
   });
   if (!resp.ok) {
     return { ok: false, status: resp.status, data: await resp.json().catch(() => ({})) };
@@ -28,7 +28,8 @@ async function kvPipeline(commands) {
 async function kvGetLeaderboard() {
   const res = await kvPipeline([["GET", KEY]]);
   if (!res.ok) throw new Error(`KV error ${res.status}`);
-  const [[, raw]] = res.data; // pipeline returns array of [statusCode, result]
+  const first = Array.isArray(res.data) ? res.data[0] : undefined;
+  const raw = first && (first.result ?? null);
   if (!raw) return [];
   try { return JSON.parse(raw); } catch { return []; }
 }
@@ -76,7 +77,8 @@ module.exports = async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   try {
     if (req.method === 'GET') {
-      const entries = normalize(await kvGetLeaderboard().catch(() => []));
+      const entriesRaw = await kvGetLeaderboard(); // allow error to throw
+      const entries = normalize(entriesRaw);
       // Ensure lore is persisted if KV configured
       try { await kvSetLeaderboard(entries); } catch {}
       return res.status(200).end(JSON.stringify({ entries }));
