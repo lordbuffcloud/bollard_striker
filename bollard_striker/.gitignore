@@ -1,0 +1,32 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environment
+venv/
+env/
+
+# PyInstaller
+/build/
+dist/
+*.spec
+
+# Logs
+*.log
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+
+# Python package
+*.egg
+*.egg-info/
+.eggs/
+
+# Leaderboard and game state files
+leaderboard.json
+
+# IDEs
+.idea/
+.vscode/

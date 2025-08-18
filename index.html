@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Bollard Striker</title>
+  <link rel="icon" href="bollard_striker/favicon.ico" />
+  <link rel="preload" as="image" href="bollard_striker/visitor.png" />
+  <link rel="preload" as="image" href="bollard_striker/bollard.png" />
+  <link rel="preload" as="audio" href="bollard_striker/sounds/collision.mp3" />
+  <link rel="preload" as="audio" href="bollard_striker/sounds/click.mp3" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <img src="bollard_striker/bollard.png" alt="logo" class="logo" />
+        <span class="title">Bollard Striker</span>
+      </div>
+      <div class="actions">
+        <button id="soundToggle" class="btn">Sound: Off</button>
+        <a class="link" href="https://github.com/lordbuffcloud/bollard_striker" target="_blank" rel="noopener noreferrer">Repo</a>
+      </div>
+    </header>
+
+    <main class="stage">
+      <canvas id="game" width="800" height="600"></canvas>
+
+      <!-- Landing overlay -->
+      <section id="landing" class="overlay visible">
+        <h1>You Are Approaching WPAFB Gate</h1>
+        <p>Good luck! Avoid the bollards.</p>
+        <div class="cta-row">
+          <button id="startBtn" class="btn primary">Start</button>
+          <button id="leaderboardBtn" class="btn">View Leaderboard</button>
+        </div>
+        <p class="credit">Created by SSgt King</p>
+      </section>
+
+      <!-- Leaderboard overlay -->
+      <section id="leaderboard" class="overlay">
+        <h2>Leaderboard</h2>
+        <ol id="leaderboardList" class="board"></ol>
+        <div class="cta-row">
+          <button id="backFromLeaderboard" class="btn">Back</button>
+        </div>
+      </section>
+
+      <!-- Game over overlay -->
+      <section id="gameOver" class="overlay">
+        <h2>Game Over</h2>
+        <p id="finalScore">Your Final Score: 0</p>
+        <p id="finalLevel">You Reached Level: 1</p>
+        <form id="nameForm" class="name-form">
+          <label for="playerName">Enter your name</label>
+          <input id="playerName" name="playerName" maxlength="20" autocomplete="off" />
+          <button type="submit" class="btn primary">Save</button>
+        </form>
+      </section>
+
+      <!-- Mobile controls -->
+      <div class="mobile-controls">
+        <button id="moveLeft" class="pad">◀</button>
+        <button id="moveRight" class="pad">▶</button>
+      </div>
+    </main>
+
+    <footer class="footer">
+      <span>© <span id="year"></span> Bollard Striker</span>
+    </footer>
+  </div>
+
+  <script src="game.js"></script>
+</body>
+</html>
+
+
