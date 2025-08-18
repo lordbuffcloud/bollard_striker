@@ -131,10 +131,9 @@
     const top = allEntries.sort((a, b) => b.score - a.score).slice(0, 6); // Allow 6 to ensure Woodpecker always fits
     localStorage.setItem(LB_KEY, JSON.stringify(top));
   }
-  function renderLeaderboard() {
-    const entries = getLeaderboard();
+  function renderEntries(entries) {
     el.lbList.innerHTML = '';
-    if (entries.length === 0) {
+    if (!entries || entries.length === 0) {
       const li = document.createElement('li');
       li.textContent = 'No scores yet.';
       el.lbList.appendChild(li);
@@ -144,6 +143,35 @@
       const li = document.createElement('li');
       li.textContent = `${name} — Score: ${score} — Level: ${level} — ${date}`;
       el.lbList.appendChild(li);
+    }
+  }
+
+  async function fetchGlobalLeaderboard() {
+    const res = await fetch('/api/leaderboard', { cache: 'no-store' });
+    if (!res.ok) throw new Error('global leaderboard not available');
+    const data = await res.json();
+    return Array.isArray(data.entries) ? data.entries : [];
+  }
+
+  async function postGlobalLeaderboard(entry) {
+    const res = await fetch('/api/leaderboard', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(entry)
+    });
+    if (!res.ok) throw new Error('failed to submit score');
+    const data = await res.json();
+    return Array.isArray(data.entries) ? data.entries : [];
+  }
+
+  async function renderLeaderboard() {
+    try {
+      const entries = await fetchGlobalLeaderboard();
+      renderEntries(entries);
+    } catch {
+      // fallback to local
+      const entries = getLeaderboard();
+      renderEntries(entries);
     }
   }
 
@@ -452,15 +480,20 @@
     playClick();
     showOverlay('landing');
   });
-  el.nameForm.addEventListener('submit', (e) => {
+  el.nameForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     const name = (el.playerName.value || 'Anonymous').trim().slice(0, 20);
     const finalScore = parseInt(el.finalScore.textContent.replace(/[^0-9]/g, ''), 10) || 0;
-    const entries = getLeaderboard();
-    entries.push({ name, score: finalScore, level: currentLevel, date: new Date().toISOString().slice(0, 19).replace('T', ' ') });
-    saveLeaderboard(entries);
+    try {
+      const entries = await postGlobalLeaderboard({ name, score: finalScore, level: currentLevel });
+      renderEntries(entries);
+    } catch {
+      const entries = getLeaderboard();
+      entries.push({ name, score: finalScore, level: currentLevel, date: new Date().toISOString().slice(0, 19).replace('T', ' ') });
+      saveLeaderboard(entries);
+      renderEntries(entries);
+    }
     el.playerName.value = '';
-    renderLeaderboard();
     showOverlay('leaderboard');
   });
 
