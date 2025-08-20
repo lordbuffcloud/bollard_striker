@@ -71,11 +71,11 @@
   }
 
   // Shield power-up
-  const shield = { active: false, visible: false, x: 0, y: 0, size: 24, vy: 120 };
+  const shield = { active: false, visible: false, x: 0, y: 0, size: 28, vy: 160 };
   function maybeSpawnShield() {
     if (shield.visible || shield.active) return;
-    // 12% chance per dodged bollard (more frequent power-ups)
-    if (Math.random() < 0.12) {
+    // 20% chance per dodged bollard (more frequent power-ups)
+    if (Math.random() < 0.20) {
       shield.visible = true;
       shield.x = Math.floor(16 + Math.random() * (screen.width - 32));
       shield.y = -shield.size;
@@ -323,6 +323,12 @@
         if (shield.active) {
           // Consume shield, keep playing
           shield.active = false;
+          invulnerableFor = 1.0; // brief grace after shield pops
+          // Clear nearby hazards to avoid instant follow-up hits
+          for (const r of bollards) {
+            r.y = Math.floor(-50 - Math.random() * 100);
+            r.x = Math.floor(Math.random() * (screen.width - bollard.width));
+          }
           // Add shield break particles
           for (let i = 0; i < 8; i++) {
             particles.push({
@@ -364,9 +370,10 @@
     // Power-up movement and pickup
     if (shield.visible) {
       shield.y += shield.vy * dt;
-      // pickup check (simple AABB)
+      // pickup check (simple AABB with slightly reduced player box)
+      const pb = scaledRect(player.x, player.y, player.width, player.height, 0.9);
       if (rectsOverlap(shield.x - shield.size / 2, shield.y - shield.size / 2, shield.size, shield.size,
-        player.x, player.y, player.width, player.height)) {
+        pb.x, pb.y, pb.w, pb.h)) {
         shield.visible = false;
         shield.active = true;
         playClick();
@@ -452,6 +459,27 @@
       ctx.beginPath();
       ctx.arc(0, 0, Math.max(8, shield.size * 0.45), 0, Math.PI * 2);
       ctx.fill();
+      ctx.restore();
+    }
+
+    // Active shield ring around player
+    if (shield.active) {
+      ctx.save();
+      const pulse = 1 + 0.1 * Math.sin(performance.now() / 120);
+      ctx.strokeStyle = COLORS.BOLT_BLUE;
+      ctx.lineWidth = 4;
+      ctx.globalAlpha = 0.8;
+      ctx.beginPath();
+      ctx.ellipse(
+        player.x + player.width / 2,
+        player.y + player.height / 2,
+        (player.width * 0.6) * pulse,
+        (player.height * 0.6) * pulse,
+        0,
+        0,
+        Math.PI * 2
+      );
+      ctx.stroke();
       ctx.restore();
     }
 
