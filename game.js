@@ -43,6 +43,8 @@
   let bestStreak = 0;
   let particles = []; // For visual effects
   let screenShake = { x: 0, y: 0, intensity: 0 }; // Screen shake on collision
+  let invulnerableFor = 0; // seconds
+  let paused = false;
 
   // Player
   const player = {
@@ -179,6 +181,13 @@
   function rectsOverlap(ax, ay, aw, ah, bx, by, bw, bh) {
     return ax < bx + bw && ax + aw > bx && ay < by + bh && ah + ay > by;
   }
+  function scaledRect(x, y, w, h, scale) {
+    const cw = w * scale;
+    const ch = h * scale;
+    const cx = x + (w - cw) / 2;
+    const cy = y + (h - ch) / 2;
+    return { x: cx, y: cy, w: cw, h: ch };
+  }
   function recalcDifficulty() {
     // Progressive difficulty: +15 px/s every 5 points, reasonable cap
     const incrementSteps = Math.floor(score / 5);
@@ -263,6 +272,10 @@
 
   function update(dt) {
     if (!running) return;
+    if (paused) return;
+
+    // timers
+    if (invulnerableFor > 0) invulnerableFor = Math.max(0, invulnerableFor - dt);
 
     // Move player
     if (player.leftPressed && player.x > 0) player.x -= player.speed * dt;
@@ -300,9 +313,12 @@
       }
     }
 
-    // Collisions
+    // Collisions (use reduced hitboxes for fairness)
     for (const b of bollards) {
-      if (rectsOverlap(b.x, b.y, bollard.width, bollard.height, player.x, player.y, player.width, player.height)) {
+      const pb = scaledRect(player.x, player.y, player.width, player.height, 0.70); // 70% player hitbox
+      const bb = scaledRect(b.x, b.y, bollard.width, bollard.height, 0.80); // 80% bollard hitbox
+      if (rectsOverlap(bb.x, bb.y, bb.w, bb.h, pb.x, pb.y, pb.w, pb.h)) {
+        if (invulnerableFor > 0) continue; // grace period
         playCollision();
         if (shield.active) {
           // Consume shield, keep playing
@@ -321,6 +337,7 @@
         } else {
           health -= 1;
           streak = 0;
+          invulnerableFor = 1.2; // brief invulnerability after hit
           // Screen shake on damage
           screenShake.intensity = 10;
           // Add damage particles
@@ -395,8 +412,23 @@
     ctx.fillStyle = COLORS.PRIMARY_BACKGROUND;
     ctx.fillRect(-screenShake.x, -screenShake.y, screen.width + Math.abs(screenShake.x) * 2, screen.height + Math.abs(screenShake.y) * 2);
 
-    // Player
-    ctx.drawImage(visitorImg, player.x, player.y, player.width, player.height);
+    // Background lane lines for navigation
+    ctx.save();
+    ctx.globalAlpha = 0.15;
+    ctx.strokeStyle = COLORS.METALLIC_SILVER;
+    for (let x = 100; x < screen.width; x += 100) {
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, screen.height);
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    // Player (flicker when invulnerable)
+    const flicker = invulnerableFor > 0 && Math.floor(performance.now() / 100) % 2 === 0;
+    if (!flicker) {
+      ctx.drawImage(visitorImg, player.x, player.y, player.width, player.height);
+    }
 
     // Bollards
     for (const b of bollards) {
@@ -438,6 +470,18 @@
     
     // HUD (drawn without screen shake)
     drawHUD();
+
+    // Pause banner
+    if (paused) {
+      ctx.save();
+      ctx.fillStyle = 'rgba(0,0,0,0.5)';
+      ctx.fillRect(0, 0, screen.width, screen.height);
+      ctx.fillStyle = COLORS.WHITE;
+      ctx.font = 'bold 36px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText('Paused — press P to resume', screen.width / 2, screen.height / 2);
+      ctx.restore();
+    }
   }
 
   let lastTime = performance.now();
@@ -453,6 +497,7 @@
   window.addEventListener('keydown', (e) => {
     if (e.key === 'ArrowLeft') player.leftPressed = true;
     if (e.key === 'ArrowRight') player.rightPressed = true;
+    if (e.key.toLowerCase() === 'p') paused = !paused;
   });
   window.addEventListener('keyup', (e) => {
     if (e.key === 'ArrowLeft') player.leftPressed = false;
