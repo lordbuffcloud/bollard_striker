@@ -123,7 +123,7 @@ canvas#game { border: 2px solid var(--metallic-silver); background: var(--concre
 }
 
 /* Floating action button for Settings on mobile */
-.fab { position: fixed; right: 14px; bottom: 14px; z-index: 20; border-radius: 999px; border: 2px solid var(--metallic-silver); background: #3a3e45; color: var(--white); padding: 12px 16px; font-weight: 700; display: none; box-shadow: 0 6px 18px rgba(0,0,0,0.35); }
+.fab { position: fixed; right: 14px; bottom: 14px; z-index: 9999; border-radius: 999px; border: 2px solid var(--metallic-silver); background: #3a3e45; color: var(--white); padding: 12px 16px; font-weight: 700; display: none; box-shadow: 0 6px 18px rgba(0,0,0,0.35); cursor: pointer; }
 @media (pointer: coarse) {
   .fab { display: inline-flex; align-items: center; justify-content: center; }
 }

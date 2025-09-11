@@ -274,7 +274,7 @@
   } catch {}
   try { const v = localStorage.getItem(MUSIC_PREF_KEY); if (v != null) musicEnabled = v === '1'; } catch {}
   try { const v = localStorage.getItem(REDUCED_MOTION_PREF_KEY); if (v != null) reducedMotion = v === '1'; } catch {}
-  try { const v = localStorage.getItem(TILT_PREF_KEY); if (v != null) tiltEnabled = v === '1'; } catch {}
+  try { const v = localStorage.getItem(TILT_PREF_KEY); if (v != null) tiltEnabled = v === '1'; else tiltEnabled = isCoarsePointer(); } catch { tiltEnabled = isCoarsePointer(); }
   try { const v = localStorage.getItem(TILT_SENS_PREF_KEY); if (v != null) { const n = Number(v); if (Number.isFinite(n)) tiltSensitivity = Math.max(0.2, Math.min(3, n)); } } catch {}
   if (el.soundToggle) el.soundToggle.textContent = `Sound: ${soundEnabled ? 'On' : 'Off'}`;
   if (el.vibrationToggle) el.vibrationToggle.textContent = `Vibrate: ${vibrationEnabled ? 'On' : 'Off'}`;
@@ -377,8 +377,8 @@
       player.height = player.width;
       bollard.width = Math.max(34, Math.floor(lanes.width * 0.32));
       bollard.height = bollard.width;
-      player.speed = 840;
-      bollard.speed = 95; // increase mobile challenge
+      player.speed = 780;
+      bollard.speed = 115; // increase mobile challenge
     } else {
       player.width = 100;
       player.height = 100;
@@ -996,10 +996,11 @@
     el.settingsBtn.addEventListener('click', () => { playClick(); showOverlay('settings'); });
   }
   if (el.settingsFab && el.settings) {
-    // Support both click and touch on mobile
-    const openSettings = () => { playClick(); showOverlay('settings'); };
+    // Support pointer, touch and click on mobile
+    const openSettings = (e) => { if (e) e.preventDefault(); playClick(); showOverlay('settings'); };
+    el.settingsFab.addEventListener('pointerdown', openSettings, { passive: false });
+    el.settingsFab.addEventListener('touchstart', openSettings, { passive: false });
     el.settingsFab.addEventListener('click', openSettings);
-    el.settingsFab.addEventListener('touchstart', (e) => { e.preventDefault(); openSettings(); }, { passive: false });
   }
   if (el.closeSettings) {
     el.closeSettings.addEventListener('click', () => { playClick(); showOverlay(); });
