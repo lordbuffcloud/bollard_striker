@@ -4,6 +4,7 @@
 
   const screen = { width: canvas.width, height: canvas.height };
   let lanes = { count: 5, width: Math.floor(canvas.width / 5) };
+  let lastSpawnLane = -1;
 
   // Colors
   const COLORS = {
@@ -110,9 +111,15 @@
     }
     // Choose a lane not occupied if possible
     const candidates = laneIndexes.filter(l => !occupied.has(l));
-    const chosenLane = candidates.length > 0 ? candidates[Math.floor(Math.random() * candidates.length)] : Math.floor(Math.random() * laneCount);
-    const lanePadding = Math.max(6, Math.floor((lanes.width - bollard.width) / 2));
-    const x = chosenLane * lanes.width + lanePadding + Math.floor(Math.random() * Math.max(1, lanes.width - bollard.width - lanePadding * 2));
+    let pool = candidates.length > 0 ? candidates : laneIndexes;
+    // Avoid repeating the same lane twice if possible
+    const alt = pool.filter(l => l !== lastSpawnLane);
+    if (alt.length > 0) pool = alt;
+    const chosenLane = pool[Math.floor(Math.random() * pool.length)];
+    lastSpawnLane = chosenLane;
+    const lanePadding = coarse ? 10 : 8;
+    const spread = Math.max(0, lanes.width - bollard.width - lanePadding * 2);
+    const x = chosenLane * lanes.width + lanePadding + Math.floor(Math.random() * (spread + 1));
     return Math.max(0, Math.min(screen.width - bollard.width, x));
   }
   function initBollards() {
@@ -346,15 +353,15 @@
   function recalcDifficulty() {
     // Progressive difficulty with gentler mobile curve
     const coarse = isCoarsePointer();
-    const incrementSteps = Math.floor(score / (coarse ? 6 : 5));
-    const base = coarse ? 110 : 150;
-    const step = coarse ? 12 : 15;
-    const capSteps = coarse ? 18 : 25;
+    const incrementSteps = Math.floor(score / (coarse ? 4 : 4));
+    const base = coarse ? 140 : 160;
+    const step = coarse ? 16 : 18;
+    const capSteps = coarse ? 20 : 28;
     const raw = base + Math.min(capSteps, incrementSteps) * step;
     // Strong damping on mobile and cap speed low
     if (coarse) {
       const proximity = Math.max(0, Math.min(1, (screen.height - player.y) / screen.height));
-      bollard.speed = Math.min(180, Math.max(80, raw * (0.85 + 0.15 * proximity)));
+      bollard.speed = Math.min(240, Math.max(100, raw * (0.9 + 0.1 * proximity)));
     } else {
       bollard.speed = raw;
     }
@@ -529,7 +536,7 @@
         dodgeSinceLastLaser += 1;
         // On mobile, gradually increase bollard count for more challenge
         if (isCoarsePointer()) {
-          const desired = score >= 12 ? 2 : 1;
+          const desired = score >= 8 ? 2 : 1;
           while (bollards.length < desired) {
             const ny = Math.floor(-140 - Math.random() * 220);
             const nx = pickSpawnX(ny);
@@ -664,12 +671,14 @@
       const l = lasers[i];
       l.y += l.vy * dt;
       // Collision with bollards
-      for (const b of bollards) {
+      for (let j = 0; j < bollards.length; j++) {
+        const b = bollards[j];
         if (rectsOverlap(l.x - 2, l.y - 16, 4, 32, b.x, b.y, bollard.width, bollard.height)) {
           // Destroy bollard and respawn
           b.y = Math.floor(-140 - Math.random() * 220);
           b.x = pickSpawnX(b.y);
           score += 2; // small bonus
+          break;
         }
       }
       if (l.y < -20) lasers.splice(i, 1);
