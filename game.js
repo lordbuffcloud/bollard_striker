@@ -292,9 +292,10 @@
   // DPR-aware canvas sizing (accounts for mobile browser UI + header/footer)
   function resizeCanvas() {
     const dpr = Math.min(2, window.devicePixelRatio || 1);
-    const aspect = 4 / 3;
+    const coarse = (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) || (window.innerWidth <= 820);
+    const aspect = coarse ? 9 / 16 : 4 / 3;
     const topbar = document.querySelector('.topbar');
-    const isCoarse = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+    const isCoarse = coarse;
     const headerH = isCoarse ? 0 : (topbar ? topbar.offsetHeight : 0);
     const viewportH = (window.visualViewport && window.visualViewport.height) ? Math.floor(window.visualViewport.height) : window.innerHeight;
     const horizontalMargin = isCoarse ? 8 : 16;
@@ -345,15 +346,15 @@
   function recalcDifficulty() {
     // Progressive difficulty with gentler mobile curve
     const coarse = isCoarsePointer();
-    const incrementSteps = Math.floor(score / (coarse ? 10 : 5));
-    const base = coarse ? 80 : 150;
-    const step = coarse ? 6 : 15;
-    const capSteps = coarse ? 15 : 25;
+    const incrementSteps = Math.floor(score / (coarse ? 6 : 5));
+    const base = coarse ? 110 : 150;
+    const step = coarse ? 12 : 15;
+    const capSteps = coarse ? 18 : 25;
     const raw = base + Math.min(capSteps, incrementSteps) * step;
     // Strong damping on mobile and cap speed low
     if (coarse) {
       const proximity = Math.max(0, Math.min(1, (screen.height - player.y) / screen.height));
-      bollard.speed = Math.min(110, Math.max(50, raw * (0.75 + 0.25 * proximity)));
+      bollard.speed = Math.min(180, Math.max(80, raw * (0.85 + 0.15 * proximity)));
     } else {
       bollard.speed = raw;
     }
@@ -381,10 +382,10 @@
     if (coarse) {
       player.width = Math.max(48, Math.floor(screen.width * 0.10));
       player.height = player.width;
-      bollard.width = Math.max(34, Math.floor(lanes.width * 0.32));
+      bollard.width = Math.max(34, Math.floor(lanes.width * 0.36));
       bollard.height = bollard.width;
-      player.speed = 780;
-      bollard.speed = 115; // increase mobile challenge
+      player.speed = 820;
+      bollard.speed = 140; // faster mobile hazards
     } else {
       player.width = 100;
       player.height = 100;
@@ -762,7 +763,8 @@
       ctx.beginPath();
       ctx.arc(0, 0, laserPU.size, 0, Math.PI * 2);
       ctx.fill();
-      if (canDraw(whiteMonsterImg)) ctx.drawImage(whiteMonsterImg, -laserPU.size * 0.6, -laserPU.size * 0.6, laserPU.size * 1.2, laserPU.size * 1.2);
+      const iconScale = isCoarsePointer() ? 1.6 : 1.2;
+      if (canDraw(whiteMonsterImg)) ctx.drawImage(whiteMonsterImg, -laserPU.size * 0.6, -laserPU.size * 0.6, laserPU.size * iconScale, laserPU.size * iconScale);
       else {
         ctx.fillStyle = COLORS.WHITE;
         ctx.beginPath();

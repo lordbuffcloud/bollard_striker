@@ -64,6 +64,12 @@ canvas#game { border: 2px solid var(--metallic-silver); background: var(--concre
 }
 .overlay.visible { display: flex; }
 
+/* Bottom sheet style on mobile */
+@media (pointer: coarse) {
+  .overlay.sheet { align-items: flex-end; background: rgba(0,0,0,0.4); }
+  .sheet .sheet-panel { width: 100%; max-width: none; background: #2e3238; border-top-left-radius: 16px; border-top-right-radius: 16px; padding: 16px; box-shadow: 0 -6px 16px rgba(0,0,0,0.4); }
+}
+
 .cta-row { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
 .btn {
   background: #3a3e45;
