@@ -235,12 +235,13 @@
     const dpr = Math.min(2, window.devicePixelRatio || 1);
     const aspect = 4 / 3;
     const topbar = document.querySelector('.topbar');
-    const footer = document.querySelector('.footer');
+    const isCoarse = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
     const headerH = topbar ? topbar.offsetHeight : 0;
-    const footerH = footer ? footer.offsetHeight : 0;
     const viewportH = (window.visualViewport && window.visualViewport.height) ? Math.floor(window.visualViewport.height) : window.innerHeight;
-    const availW = Math.max(320, Math.floor(window.innerWidth - 32));
-    const availH = Math.max(240, Math.floor(viewportH - headerH - footerH - 32));
+    const horizontalMargin = isCoarse ? 8 : 16;
+    const verticalMargin = isCoarse ? 8 : 16;
+    const availW = Math.max(320, Math.floor(window.innerWidth - horizontalMargin * 2));
+    const availH = Math.max(240, Math.floor(viewportH - headerH - verticalMargin * 2));
 
     let displayWidth = Math.min(960, availW);
     let displayHeight = Math.floor(displayWidth / aspect);
