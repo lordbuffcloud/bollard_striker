@@ -417,7 +417,7 @@
         // scoring with combo
         streak += 1;
         bestStreak = Math.max(bestStreak, streak);
-        const comboBonus = 1 + Math.min(15, Math.floor(streak / 4)); // Better combo scaling
+        const comboBonus = 1 + Math.min(12, Math.floor(streak / 5)); // Slightly gentler scaling for mobile fairness
         score += comboBonus;
         
         // Add particles for successful dodge
@@ -437,10 +437,13 @@
       }
     }
 
-    // Collisions (use reduced hitboxes for fairness)
+    // Collisions (use reduced hitboxes for fairness; extra leniency on mobile)
     for (const b of bollards) {
-      const pb = scaledRect(player.x, player.y, player.width, player.height, 0.70); // 70% player hitbox
-      const bb = scaledRect(b.x, b.y, bollard.width, bollard.height, 0.80); // 80% bollard hitbox
+      const coarse = (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) || (window.innerWidth <= 820);
+      const playerScale = coarse ? 0.55 : 0.70;
+      const bollardScale = coarse ? 0.65 : 0.80;
+      const pb = scaledRect(player.x, player.y, player.width, player.height, playerScale);
+      const bb = scaledRect(b.x, b.y, bollard.width, bollard.height, bollardScale);
       if (rectsOverlap(bb.x, bb.y, bb.w, bb.h, pb.x, pb.y, pb.w, pb.h)) {
         if (invulnerableFor > 0) continue; // grace period
         playCollision();
@@ -481,9 +484,9 @@
               color: COLORS.DEEP_RED
             });
           }
-          // reset bollards
+          // reset bollards with extra spacing so immediate re-hit is less likely on mobile
           for (const r of bollards) {
-            r.y = Math.floor(-50 - Math.random() * 100);
+            r.y = Math.floor(-100 - Math.random() * 150);
             r.x = Math.floor(Math.random() * (screen.width - bollard.width));
           }
         }
