@@ -230,19 +230,25 @@
   if (el.tiltSensitivity) el.tiltSensitivity.value = String(tiltSensitivity);
   if (el.reducedMotion) el.reducedMotion.checked = reducedMotion;
 
-  // DPR-aware canvas sizing
+  // DPR-aware canvas sizing (accounts for mobile browser UI + header/footer)
   function resizeCanvas() {
     const dpr = Math.min(2, window.devicePixelRatio || 1);
     const aspect = 4 / 3;
-    const container = canvas.parentElement;
-    const maxW = Math.min(960, (container ? container.clientWidth : window.innerWidth) - 32);
-    const maxH = Math.min(720, (container ? container.clientHeight : window.innerHeight) - 180);
-    let displayWidth = Math.max(320, Math.floor(maxW));
+    const topbar = document.querySelector('.topbar');
+    const footer = document.querySelector('.footer');
+    const headerH = topbar ? topbar.offsetHeight : 0;
+    const footerH = footer ? footer.offsetHeight : 0;
+    const viewportH = (window.visualViewport && window.visualViewport.height) ? Math.floor(window.visualViewport.height) : window.innerHeight;
+    const availW = Math.max(320, Math.floor(window.innerWidth - 32));
+    const availH = Math.max(240, Math.floor(viewportH - headerH - footerH - 32));
+
+    let displayWidth = Math.min(960, availW);
     let displayHeight = Math.floor(displayWidth / aspect);
-    if (displayHeight > maxH) {
-      displayHeight = Math.max(240, Math.floor(maxH));
+    if (displayHeight > availH) {
+      displayHeight = Math.min(720, availH);
       displayWidth = Math.floor(displayHeight * aspect);
     }
+
     canvas.style.width = displayWidth + 'px';
     canvas.style.height = displayHeight + 'px';
     canvas.width = Math.floor(displayWidth * dpr);
@@ -252,6 +258,9 @@
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
   window.addEventListener('resize', resizeCanvas);
+  window.addEventListener('orientationchange', () => setTimeout(resizeCanvas, 100));
+  if (window.visualViewport) window.visualViewport.addEventListener('resize', resizeCanvas);
+  window.addEventListener('pageshow', resizeCanvas);
   resizeCanvas();
 
   // Helpers
