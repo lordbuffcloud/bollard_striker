@@ -292,6 +292,9 @@
     const coarse = (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) || (window.innerWidth <= 820);
     lanes.count = coarse ? 2 : 5;
     lanes.width = Math.max(120, Math.floor(screen.width / lanes.count));
+
+    // Adjust sizes for current viewport
+    configureSizesForCurrentViewport();
   }
   window.addEventListener('resize', resizeCanvas);
   window.addEventListener('orientationchange', () => setTimeout(resizeCanvas, 100));
@@ -317,8 +320,14 @@
     const base = coarse ? 80 : 150;
     const step = coarse ? 6 : 15;
     const capSteps = coarse ? 15 : 25;
-    const target = base + Math.min(capSteps, incrementSteps) * step;
-    bollard.speed = target;
+    const raw = base + Math.min(capSteps, incrementSteps) * step;
+    // Slight slowdown near bottom of screen on mobile to allow steering
+    if (coarse) {
+      const proximity = Math.max(0, Math.min(1, (screen.height - player.y) / screen.height));
+      bollard.speed = Math.min(140, Math.max(70, raw * (0.85 + 0.15 * proximity)));
+    } else {
+      bollard.speed = raw;
+    }
     // Derive a level for display (every 8 points for more frequent level-ups)
     currentLevel = Math.max(1, Math.floor(score / 8) + 1);
     scoreMultiplier = 1 + Math.min(2.0, streak * 0.03); // better bonus from streaks
@@ -338,23 +347,33 @@
   }
 
   // Game lifecycle
+  function configureSizesForCurrentViewport() {
+    const coarse = isCoarsePointer();
+    if (coarse) {
+      player.width = Math.max(56, Math.floor(screen.width * 0.12));
+      player.height = player.width;
+      bollard.width = Math.max(40, Math.floor(lanes.width * 0.38));
+      bollard.height = bollard.width;
+      player.speed = 720;
+      bollard.speed = 80;
+    } else {
+      player.width = 100;
+      player.height = 100;
+      bollard.width = 50;
+      bollard.height = 50;
+      player.speed = 420;
+      bollard.speed = 150;
+    }
+  }
   function resetGame() {
     score = 0;
     health = 3;
     currentLevel = 1;
     levelThreshold = 8;
     scoreMultiplier = 1;
-    const coarse = isCoarsePointer();
-    // Smaller car on mobile
-    player.width = coarse ? Math.floor(screen.width * 0.16) : 100;
-    player.height = player.width;
-    // Smaller bollards on mobile
-    bollard.width = coarse ? Math.floor(lanes.width * 0.45) : 50;
-    bollard.height = bollard.width;
+    configureSizesForCurrentViewport();
     player.x = Math.floor((lanes.count * lanes.width) / 2 - player.width / 2);
     player.y = screen.height - Math.max(150, Math.floor(player.height * 1.5));
-    bollard.speed = coarse ? 90 : 150;
-    player.speed = coarse ? 640 : 420;
     initBollards();
   }
 
