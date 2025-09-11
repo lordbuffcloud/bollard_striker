@@ -139,7 +139,7 @@
   function maybeSpawnLaser() {
     if (laserPU.visible || laserPU.active) return;
     // Small chance per dodge, slightly higher on desktop to raise difficulty
-    const chance = isCoarsePointer() ? 0.08 : 0.12;
+    const chance = isCoarsePointer() ? 0.12 : 0.15;
     const guaranteed = dodgeSinceLastLaser >= (isCoarsePointer() ? 5 : 8);
     if (guaranteed || Math.random() < chance) {
       laserPU.visible = true;
