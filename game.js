@@ -63,6 +63,8 @@
   let screenShake = { x: 0, y: 0, intensity: 0 }; // Screen shake on collision
   let invulnerableFor = 0; // seconds
   let paused = false;
+  let dodgeSinceLastLaser = 0;
+  let bgmUnlocked = false;
 
   // Player
   const player = {
@@ -138,10 +140,12 @@
     if (laserPU.visible || laserPU.active) return;
     // Small chance per dodge, slightly higher on desktop to raise difficulty
     const chance = isCoarsePointer() ? 0.08 : 0.12;
-    if (Math.random() < chance) {
+    const guaranteed = dodgeSinceLastLaser >= (isCoarsePointer() ? 10 : 8);
+    if (guaranteed || Math.random() < chance) {
       laserPU.visible = true;
       laserPU.x = Math.floor(16 + Math.random() * (screen.width - 32));
       laserPU.y = -laserPU.size;
+      dodgeSinceLastLaser = 0;
     }
   }
 
@@ -427,7 +431,7 @@
     }
     showCountdownOverlay(false);
     if (musicEnabled) {
-      try { bgm.currentTime = 0; bgm.volume = 0.6; bgm.play(); } catch {}
+      try { bgm.currentTime = 0; bgm.volume = 0.6; await bgm.play(); bgmUnlocked = true; } catch {}
     } else {
       try { bgm.pause(); } catch {}
     }
@@ -514,6 +518,7 @@
         bestStreak = Math.max(bestStreak, streak);
         const comboBonus = 1 + Math.min(12, Math.floor(streak / 5)); // Slightly gentler scaling for mobile fairness
         score += comboBonus;
+        dodgeSinceLastLaser += 1;
         
         // Add particles for successful dodge
         for (let i = 0; i < (isCoarsePointer() ? 1 : 3); i++) {
@@ -566,7 +571,7 @@
         } else {
           health -= 1;
           streak = 0;
-          invulnerableFor = isCoarsePointer() ? 1.8 : 1.2; // longer invuln on mobile
+          invulnerableFor = isCoarsePointer() ? 1.2 : 1.0; // slightly shorter to restore challenge
           // Screen shake on damage
           screenShake.intensity = reducedMotion ? 4 : 10;
           // Add damage particles
@@ -830,6 +835,13 @@
     if (e.key === 'ArrowRight') player.rightPressed = false;
   });
 
+  function tryStartMusicFromGesture() {
+    if (!musicEnabled || bgmUnlocked) return;
+    try { bgm.currentTime = 0; bgm.volume = 0.6; bgm.play().then(() => (bgmUnlocked = true)).catch(() => {}); } catch {}
+  }
+  document.addEventListener('touchstart', tryStartMusicFromGesture, { passive: true });
+  document.addEventListener('mousedown', tryStartMusicFromGesture);
+
   // Prevent double-tap zoom and double-click zoom on mobile
   let lastTouchEnd = 0;
   document.addEventListener('touchend', (e) => {
@@ -901,6 +913,7 @@
   // Buttons
   el.startBtn.addEventListener('click', async () => {
     playClick();
+    tryStartMusicFromGesture();
     await startGameWithCountdown();
   });
   el.leaderboardBtn.addEventListener('click', () => {
@@ -979,7 +992,7 @@
     el.enableMusic.addEventListener('change', () => {
       musicEnabled = !!el.enableMusic.checked;
       try { localStorage.setItem(MUSIC_PREF_KEY, musicEnabled ? '1' : '0'); } catch {}
-      if (!musicEnabled) { try { bgm.pause(); } catch {} } else if (running) { try { bgm.currentTime = 0; bgm.play(); } catch {} }
+      if (!musicEnabled) { try { bgm.pause(); } catch {} } else if (running) { tryStartMusicFromGesture(); }
     });
   }
   if (el.reducedMotion) {
