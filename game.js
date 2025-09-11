@@ -24,6 +24,8 @@
   visitorImg.src = 'bollard_striker/visitor.png';
   const bollardImg = new Image();
   bollardImg.src = 'bollard_striker/bollard.png';
+  const whiteMonsterImg = new Image();
+  whiteMonsterImg.src = 'white_monster.png';
 
   const sfx = {
     collision: new Audio('bollard_striker/sounds/collision.mp3'),
@@ -31,7 +33,7 @@
   };
   sfx.collision.preload = 'auto';
   sfx.click.preload = 'auto';
-  const bgm = new Audio('bollard_striker/sounds/background.mp3');
+  const bgm = new Audio('sounds/Krause.mp3');
   bgm.loop = true;
   bgm.preload = 'auto';
 
@@ -117,6 +119,9 @@
 
   // Shield power-up
   const shield = { active: false, visible: false, x: 0, y: 0, size: 28, vy: 160 };
+  // Laser power-up (White Monster)
+  const laserPU = { active: false, visible: false, x: 0, y: 0, size: 28, vy: 140, timeLeft: 0 };
+  const lasers = [];
   function maybeSpawnShield() {
     if (shield.visible || shield.active) return;
     const coarse = isCoarsePointer();
@@ -126,6 +131,17 @@
       shield.visible = true;
       shield.x = Math.floor(16 + Math.random() * (screen.width - 32));
       shield.y = -shield.size;
+    }
+  }
+
+  function maybeSpawnLaser() {
+    if (laserPU.visible || laserPU.active) return;
+    // Small chance per dodge, slightly higher on desktop to raise difficulty
+    const chance = isCoarsePointer() ? 0.08 : 0.12;
+    if (Math.random() < chance) {
+      laserPU.visible = true;
+      laserPU.x = Math.floor(16 + Math.random() * (screen.width - 32));
+      laserPU.y = -laserPU.size;
     }
   }
 
@@ -513,6 +529,7 @@
         
         recalcDifficulty();
         maybeSpawnShield();
+        maybeSpawnLaser();
       }
     }
 
@@ -589,6 +606,26 @@
       }
     }
 
+    // Laser power-up movement and pickup
+    if (laserPU.visible) {
+      laserPU.y += laserPU.vy * dt;
+      const pb2 = scaledRect(player.x, player.y, player.width, player.height, 0.9);
+      if (rectsOverlap(laserPU.x - laserPU.size / 2, laserPU.y - laserPU.size / 2, laserPU.size, laserPU.size,
+        pb2.x, pb2.y, pb2.w, pb2.h)) {
+        laserPU.visible = false;
+        laserPU.active = true;
+        laserPU.timeLeft = isCoarsePointer() ? 6.0 : 5.0; // Slightly longer on mobile
+        playClick();
+      }
+      if (laserPU.y - laserPU.size / 2 > screen.height) laserPU.visible = false;
+    }
+
+    // Update active laser power-up timer
+    if (laserPU.active) {
+      laserPU.timeLeft -= dt;
+      if (laserPU.timeLeft <= 0) laserPU.active = false;
+    }
+
     // Update particles
     for (let i = particles.length - 1; i >= 0; i--) {
       const p = particles[i];
@@ -598,6 +635,22 @@
       if (p.life <= 0) {
         particles.splice(i, 1);
       }
+    }
+
+    // Update lasers
+    for (let i = lasers.length - 1; i >= 0; i--) {
+      const l = lasers[i];
+      l.y += l.vy * dt;
+      // Collision with bollards
+      for (const b of bollards) {
+        if (rectsOverlap(l.x - 2, l.y - 16, 4, 32, b.x, b.y, bollard.width, bollard.height)) {
+          // Destroy bollard and respawn
+          b.y = Math.floor(-140 - Math.random() * 220);
+          b.x = pickSpawnX(b.y);
+          score += 2; // small bonus
+        }
+      }
+      if (l.y < -20) lasers.splice(i, 1);
     }
     
     // Update screen shake
@@ -666,6 +719,41 @@
       ctx.beginPath();
       ctx.arc(0, 0, Math.max(8, shield.size * 0.45), 0, Math.PI * 2);
       ctx.fill();
+      ctx.restore();
+    }
+
+    // Laser power-up rendering (pickup icon)
+    if (laserPU.visible) {
+      ctx.save();
+      ctx.translate(laserPU.x, laserPU.y);
+      const gradient2 = ctx.createRadialGradient(0, 0, 2, 0, 0, laserPU.size);
+      gradient2.addColorStop(0, 'rgba(255,255,255,0.95)');
+      gradient2.addColorStop(1, 'rgba(255,255,255,0.05)');
+      ctx.fillStyle = gradient2;
+      ctx.beginPath();
+      ctx.arc(0, 0, laserPU.size, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.drawImage(whiteMonsterImg, -laserPU.size * 0.6, -laserPU.size * 0.6, laserPU.size * 1.2, laserPU.size * 1.2);
+      ctx.restore();
+    }
+
+    // Active lasers firing effect
+    if (laserPU.active) {
+      const fireInterval = 0.18; // seconds between beams
+      laserPU._acc = (laserPU._acc || 0) + (1 / 60);
+      if (laserPU._acc >= fireInterval) {
+        laserPU._acc = 0;
+        // Fire a straight beam upward from car center
+        lasers.push({ x: player.x + player.width / 2, y: player.y, vy: -900 });
+      }
+      // Draw a glow on the car
+      ctx.save();
+      ctx.globalAlpha = 0.6;
+      ctx.strokeStyle = '#39ff14';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.roundRect(player.x - 4, player.y - 4, player.width + 8, player.height + 8, 8);
+      ctx.stroke();
       ctx.restore();
     }
 
