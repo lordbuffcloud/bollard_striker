@@ -3,6 +3,7 @@
   const ctx = canvas.getContext('2d');
 
   const screen = { width: canvas.width, height: canvas.height };
+  let lanes = { count: 5, width: Math.floor(canvas.width / 5) };
 
   // Colors
   const COLORS = {
@@ -80,30 +81,33 @@
     return (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) || (window.innerWidth <= 820);
   }
   function pickSpawnX(newY) {
-    // Try multiple candidates; prefer those far from neighbors in same vertical band
-    const tries = 24;
-    const minGap = Math.max(60, Math.floor(player.width * 0.8));
-    let bestX = 0;
-    let bestScore = -Infinity;
-    for (let t = 0; t < tries; t += 1) {
-      const x = Math.floor(Math.random() * (screen.width - bollard.width));
-      let ok = true;
-      let nearest = Infinity;
-      for (const other of bollards) {
-        if (Math.abs((other.y || 0) - newY) < 220) {
-          const dx = Math.abs(other.x - x);
-          nearest = Math.min(nearest, dx);
-          if (dx < minGap) { ok = false; break; }
-        }
+    // Lane-based spawn; guarantee at least one open lane per row band
+    const coarse = isCoarsePointer();
+    const laneCount = lanes.count; // 3 on mobile, 5 on desktop
+    const laneIndexes = Array.from({ length: laneCount }, (_, i) => i);
+    // Determine occupied lanes near this Y
+    const occupied = new Set();
+    for (const other of bollards) {
+      if (Math.abs((other.y || 0) - newY) < 220) {
+        const lane = Math.max(0, Math.min(laneCount - 1, Math.floor(other.x / lanes.width)));
+        occupied.add(lane);
       }
-      if (ok) return x;
-      if (nearest > bestScore) { bestScore = nearest; bestX = x; }
     }
-    return bestX; // fallback to farthest candidate
+    // If all lanes are occupied, free one randomly
+    if (occupied.size >= laneCount) {
+      const toFree = Math.floor(Math.random() * laneCount);
+      occupied.delete(toFree);
+    }
+    // Choose a lane not occupied if possible
+    const candidates = laneIndexes.filter(l => !occupied.has(l));
+    const chosenLane = candidates.length > 0 ? candidates[Math.floor(Math.random() * candidates.length)] : Math.floor(Math.random() * laneCount);
+    const lanePadding = Math.max(6, Math.floor((lanes.width - bollard.width) / 2));
+    const x = chosenLane * lanes.width + lanePadding + Math.floor(Math.random() * Math.max(1, lanes.width - bollard.width - lanePadding * 2));
+    return Math.max(0, Math.min(screen.width - bollard.width, x));
   }
   function initBollards() {
     bollards.length = 0;
-    const count = isCoarsePointer() ? 3 : 5;
+    const count = isCoarsePointer() ? 2 : 5;
     for (let i = 0; i < count; i += 1) {
       const y = Math.floor(-50 - Math.random() * 150);
       const x = pickSpawnX(y);
@@ -283,6 +287,11 @@
     screen.width = displayWidth;
     screen.height = displayHeight;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    // Recalculate lane layout
+    const coarse = (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) || (window.innerWidth <= 820);
+    lanes.count = coarse ? 3 : 5;
+    lanes.width = Math.max(80, Math.floor(screen.width / lanes.count));
   }
   window.addEventListener('resize', resizeCanvas);
   window.addEventListener('orientationchange', () => setTimeout(resizeCanvas, 100));
@@ -471,8 +480,8 @@
     // Collisions (use reduced hitboxes for fairness; extra leniency on mobile)
     for (const b of bollards) {
       const coarse = (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) || (window.innerWidth <= 820);
-      const playerScale = coarse ? 0.55 : 0.70;
-      const bollardScale = coarse ? 0.65 : 0.80;
+      const playerScale = coarse ? 0.50 : 0.70;
+      const bollardScale = coarse ? 0.60 : 0.80;
       const pb = scaledRect(player.x, player.y, player.width, player.height, playerScale);
       const bb = scaledRect(b.x, b.y, bollard.width, bollard.height, bollardScale);
       if (rectsOverlap(bb.x, bb.y, bb.w, bb.h, pb.x, pb.y, pb.w, pb.h)) {
@@ -577,11 +586,12 @@
     ctx.fillStyle = COLORS.PRIMARY_BACKGROUND;
     ctx.fillRect(-screenShake.x, -screenShake.y, screen.width + Math.abs(screenShake.x) * 2, screen.height + Math.abs(screenShake.y) * 2);
 
-    // Background lane lines for navigation
+    // Background lane lines for navigation (align to lane grid)
     ctx.save();
     ctx.globalAlpha = 0.15;
     ctx.strokeStyle = COLORS.METALLIC_SILVER;
-    for (let x = 100; x < screen.width; x += 100) {
+    for (let i = 1; i < lanes.count; i += 1) {
+      const x = Math.floor(i * lanes.width);
       ctx.beginPath();
       ctx.moveTo(x, 0);
       ctx.lineTo(x, screen.height);
