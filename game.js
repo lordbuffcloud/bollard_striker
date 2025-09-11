@@ -837,10 +837,27 @@
 
   function tryStartMusicFromGesture() {
     if (!musicEnabled || bgmUnlocked) return;
-    try { bgm.currentTime = 0; bgm.volume = 0.6; bgm.play().then(() => (bgmUnlocked = true)).catch(() => {}); } catch {}
+    try {
+      bgm.currentTime = 0;
+      bgm.volume = 0.6;
+      const p = bgm.play();
+      if (p && typeof p.then === 'function') {
+        p.then(() => { bgmUnlocked = true; detachAudioUnlockers(); }).catch(() => {});
+      } else {
+        bgmUnlocked = true; detachAudioUnlockers();
+      }
+    } catch {}
   }
-  document.addEventListener('touchstart', tryStartMusicFromGesture, { passive: true });
-  document.addEventListener('mousedown', tryStartMusicFromGesture);
+  function detachAudioUnlockers() {
+    document.removeEventListener('touchstart', tryStartMusicFromGesture);
+    document.removeEventListener('pointerdown', tryStartMusicFromGesture);
+    document.removeEventListener('mousedown', tryStartMusicFromGesture);
+    document.removeEventListener('keydown', tryStartMusicFromGesture);
+  }
+  document.addEventListener('touchstart', tryStartMusicFromGesture, { passive: true, once: true });
+  document.addEventListener('pointerdown', tryStartMusicFromGesture, { once: true });
+  document.addEventListener('mousedown', tryStartMusicFromGesture, { once: true });
+  document.addEventListener('keydown', tryStartMusicFromGesture, { once: true });
 
   // Prevent double-tap zoom and double-click zoom on mobile
   let lastTouchEnd = 0;
