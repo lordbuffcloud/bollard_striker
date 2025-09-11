@@ -127,8 +127,8 @@
   function maybeSpawnShield() {
     if (shield.visible || shield.active) return;
     const coarse = isCoarsePointer();
-    // Higher chance on mobile
-    const chance = coarse ? 0.40 : 0.20;
+    // Lower chance on mobile to increase difficulty
+    const chance = coarse ? 0.18 : 0.20;
     if (Math.random() < chance) {
       shield.visible = true;
       shield.x = Math.floor(16 + Math.random() * (screen.width - 32));
@@ -376,8 +376,8 @@
       player.height = player.width;
       bollard.width = Math.max(34, Math.floor(lanes.width * 0.32));
       bollard.height = bollard.width;
-      player.speed = 1000;
-      bollard.speed = 60;
+      player.speed = 880; // slight reduction to restore challenge
+      bollard.speed = 70; // slightly faster
     } else {
       player.width = 100;
       player.height = 100;
@@ -744,8 +744,8 @@
 
     // Active lasers firing effect
     if (laserPU.active) {
-      const fireInterval = 0.18; // seconds between beams
-      laserPU._acc = (laserPU._acc || 0) + (1 / 60);
+      const fireInterval = 0.24; // slightly slower beams for balance
+      laserPU._acc = (laserPU._acc || 0) + dt;
       if (laserPU._acc >= fireInterval) {
         laserPU._acc = 0;
         // Fire a straight beam upward from car center
@@ -753,12 +753,12 @@
       }
       // Draw a glow on the car
       ctx.save();
-      ctx.globalAlpha = 0.6;
+      ctx.globalAlpha = 0.5;
       ctx.strokeStyle = '#39ff14';
-      ctx.lineWidth = 3;
-      ctx.beginPath();
-      ctx.roundRect(player.x - 4, player.y - 4, player.width + 8, player.height + 8, 8);
-      ctx.stroke();
+      ctx.lineWidth = 2;
+      ctx.shadowColor = '#39ff14';
+      ctx.shadowBlur = 8;
+      ctx.strokeRect(player.x - 3, player.y - 3, player.width + 6, player.height + 6);
       ctx.restore();
     }
 
