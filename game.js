@@ -119,8 +119,10 @@
   const shield = { active: false, visible: false, x: 0, y: 0, size: 28, vy: 160 };
   function maybeSpawnShield() {
     if (shield.visible || shield.active) return;
-    // 20% chance per dodged bollard (more frequent power-ups)
-    if (Math.random() < 0.20) {
+    const coarse = isCoarsePointer();
+    // Higher chance on mobile
+    const chance = coarse ? 0.40 : 0.20;
+    if (Math.random() < chance) {
       shield.visible = true;
       shield.x = Math.floor(16 + Math.random() * (screen.width - 32));
       shield.y = -shield.size;
@@ -291,7 +293,7 @@
     // Recalculate lane layout
     const coarse = (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) || (window.innerWidth <= 820);
     lanes.count = coarse ? 2 : 5;
-    lanes.width = Math.max(120, Math.floor(screen.width / lanes.count));
+    lanes.width = Math.max(160, Math.floor(screen.width / lanes.count));
 
     // Adjust sizes for current viewport
     configureSizesForCurrentViewport();
@@ -321,10 +323,10 @@
     const step = coarse ? 6 : 15;
     const capSteps = coarse ? 15 : 25;
     const raw = base + Math.min(capSteps, incrementSteps) * step;
-    // Slight slowdown near bottom of screen on mobile to allow steering
+    // Strong damping on mobile and cap speed low
     if (coarse) {
       const proximity = Math.max(0, Math.min(1, (screen.height - player.y) / screen.height));
-      bollard.speed = Math.min(140, Math.max(70, raw * (0.85 + 0.15 * proximity)));
+      bollard.speed = Math.min(110, Math.max(50, raw * (0.75 + 0.25 * proximity)));
     } else {
       bollard.speed = raw;
     }
@@ -350,12 +352,12 @@
   function configureSizesForCurrentViewport() {
     const coarse = isCoarsePointer();
     if (coarse) {
-      player.width = Math.max(56, Math.floor(screen.width * 0.12));
+      player.width = Math.max(48, Math.floor(screen.width * 0.10));
       player.height = player.width;
-      bollard.width = Math.max(40, Math.floor(lanes.width * 0.38));
+      bollard.width = Math.max(34, Math.floor(lanes.width * 0.32));
       bollard.height = bollard.width;
-      player.speed = 720;
-      bollard.speed = 80;
+      player.speed = 1000;
+      bollard.speed = 60;
     } else {
       player.width = 100;
       player.height = 100;
@@ -498,7 +500,7 @@
         score += comboBonus;
         
         // Add particles for successful dodge
-        for (let i = 0; i < 3; i++) {
+        for (let i = 0; i < (isCoarsePointer() ? 1 : 3); i++) {
           particles.push({
             x: b.x + bollard.width / 2,
             y: b.y + bollard.height / 2,
@@ -517,8 +519,8 @@
     // Collisions (use reduced hitboxes for fairness; extra leniency on mobile)
     for (const b of bollards) {
       const coarse = (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) || (window.innerWidth <= 820);
-      const playerScale = coarse ? 0.50 : 0.70;
-      const bollardScale = coarse ? 0.60 : 0.80;
+      const playerScale = coarse ? 0.40 : 0.70;
+      const bollardScale = coarse ? 0.55 : 0.80;
       const pb = scaledRect(player.x, player.y, player.width, player.height, playerScale);
       const bb = scaledRect(b.x, b.y, bollard.width, bollard.height, bollardScale);
       if (rectsOverlap(bb.x, bb.y, bb.w, bb.h, pb.x, pb.y, pb.w, pb.h)) {
@@ -547,7 +549,7 @@
         } else {
           health -= 1;
           streak = 0;
-          invulnerableFor = 1.2; // brief invulnerability after hit
+          invulnerableFor = isCoarsePointer() ? 1.8 : 1.2; // longer invuln on mobile
           // Screen shake on damage
           screenShake.intensity = reducedMotion ? 4 : 10;
           // Add damage particles
@@ -563,7 +565,7 @@
           }
           // reset bollards with extra spacing so immediate re-hit is less likely on mobile
           for (const r of bollards) {
-            r.y = Math.floor(-120 - Math.random() * 180);
+            r.y = Math.floor(-200 - Math.random() * 240);
             r.x = pickSpawnX(r.y);
           }
         }
