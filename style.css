@@ -38,7 +38,7 @@ body {
 .link { color: var(--bolt-blue); text-decoration: none; }
 .link:hover { text-decoration: underline; }
 
-.stage { position: relative; display: grid; place-items: center; padding: 16px; min-height: 85svh; }
+.stage { position: relative; display: grid; place-items: center; padding: 16px; min-height: 85svh; justify-items: center; }
 canvas#game { border: 2px solid var(--metallic-silver); background: var(--concrete-gray); border-radius: 10px; width: 100%; max-width: 960px; height: auto; }
 
 /* Touch zones fill the canvas area to allow half-screen controls */

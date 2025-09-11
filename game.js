@@ -846,11 +846,20 @@
 
   let lastTime = performance.now();
   function loop(now) {
-    const dt = Math.min(0.05, (now - lastTime) / 1000); // clamp dt to avoid spikes
-    lastTime = now;
-    update(dt);
-    draw();
-    requestAnimationFrame(loop);
+    try {
+      const dt = Math.min(0.05, (now - lastTime) / 1000); // clamp dt to avoid spikes
+      lastTime = now;
+      update(dt);
+      draw();
+    } catch (e) {
+      // Prevent total freeze; log once
+      if (!window.__BS_LAST_ERR || (now - window.__BS_LAST_ERR.time) > 1000) {
+        console.error('Game loop error', e);
+        window.__BS_LAST_ERR = { time: now, e };
+      }
+    } finally {
+      requestAnimationFrame(loop);
+    }
   }
 
   // Controls
