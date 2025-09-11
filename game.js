@@ -107,7 +107,7 @@
   }
   function initBollards() {
     bollards.length = 0;
-    const count = isCoarsePointer() ? 2 : 5;
+    const count = isCoarsePointer() ? 1 : 5;
     for (let i = 0; i < count; i += 1) {
       const y = Math.floor(-50 - Math.random() * 150);
       const x = pickSpawnX(y);
@@ -266,7 +266,7 @@
     const aspect = 4 / 3;
     const topbar = document.querySelector('.topbar');
     const isCoarse = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
-    const headerH = topbar ? topbar.offsetHeight : 0;
+    const headerH = isCoarse ? 0 : (topbar ? topbar.offsetHeight : 0);
     const viewportH = (window.visualViewport && window.visualViewport.height) ? Math.floor(window.visualViewport.height) : window.innerHeight;
     const horizontalMargin = isCoarse ? 8 : 16;
     const verticalMargin = isCoarse ? 8 : 16;
@@ -291,7 +291,7 @@
     // Recalculate lane layout
     const coarse = (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) || (window.innerWidth <= 820);
     lanes.count = coarse ? 3 : 5;
-    lanes.width = Math.max(80, Math.floor(screen.width / lanes.count));
+    lanes.width = Math.max(96, Math.floor(screen.width / lanes.count));
   }
   window.addEventListener('resize', resizeCanvas);
   window.addEventListener('orientationchange', () => setTimeout(resizeCanvas, 100));
@@ -313,10 +313,10 @@
   function recalcDifficulty() {
     // Progressive difficulty with gentler mobile curve
     const coarse = isCoarsePointer();
-    const incrementSteps = Math.floor(score / (coarse ? 6 : 5));
-    const base = coarse ? 120 : 150;
-    const step = coarse ? 10 : 15;
-    const capSteps = 25;
+    const incrementSteps = Math.floor(score / (coarse ? 8 : 5));
+    const base = coarse ? 100 : 150;
+    const step = coarse ? 8 : 15;
+    const capSteps = 20;
     const target = base + Math.min(capSteps, incrementSteps) * step;
     bollard.speed = target;
     // Derive a level for display (every 8 points for more frequent level-ups)
@@ -536,7 +536,7 @@
 
     // Power-up movement and pickup
     if (shield.visible) {
-      shield.y += shield.vy * dt;
+      shield.y += (reducedMotion ? shield.vy * 0.8 : shield.vy) * dt;
       // pickup check (simple AABB with slightly reduced player box)
       const pb = scaledRect(player.x, player.y, player.width, player.height, 0.9);
       if (rectsOverlap(shield.x - shield.size / 2, shield.y - shield.size / 2, shield.size, shield.size,
