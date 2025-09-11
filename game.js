@@ -377,8 +377,8 @@
       player.height = player.width;
       bollard.width = Math.max(34, Math.floor(lanes.width * 0.32));
       bollard.height = bollard.width;
-      player.speed = 900;
-      bollard.speed = 80;
+      player.speed = 840;
+      bollard.speed = 95; // increase mobile challenge
     } else {
       player.width = 100;
       player.height = 100;
@@ -996,7 +996,10 @@
     el.settingsBtn.addEventListener('click', () => { playClick(); showOverlay('settings'); });
   }
   if (el.settingsFab && el.settings) {
-    el.settingsFab.addEventListener('click', () => { playClick(); showOverlay('settings'); });
+    // Support both click and touch on mobile
+    const openSettings = () => { playClick(); showOverlay('settings'); };
+    el.settingsFab.addEventListener('click', openSettings);
+    el.settingsFab.addEventListener('touchstart', (e) => { e.preventDefault(); openSettings(); }, { passive: false });
   }
   if (el.closeSettings) {
     el.closeSettings.addEventListener('click', () => { playClick(); showOverlay(); });
