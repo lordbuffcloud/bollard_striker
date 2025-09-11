@@ -30,9 +30,24 @@
   };
   sfx.collision.preload = 'auto';
   sfx.click.preload = 'auto';
+  const bgm = new Audio('bollard_striker/sounds/background.mp3');
+  bgm.loop = true;
+  bgm.preload = 'auto';
 
   // Game State
+  const SOUND_PREF_KEY = 'bollard-striker-sound';
+  const VIBRATE_PREF_KEY = 'bollard-striker-vibrate';
+  const MUSIC_PREF_KEY = 'bollard-striker-music';
+  const TILT_PREF_KEY = 'bollard-striker-tilt-enabled';
+  const TILT_SENS_PREF_KEY = 'bollard-striker-tilt-sensitivity';
+  const REDUCED_MOTION_PREF_KEY = 'bollard-striker-reduced-motion';
   let soundEnabled = false;
+  let vibrationEnabled = false;
+  let musicEnabled = false;
+  let reducedMotion = false;
+  let tiltEnabled = false;
+  let tiltSensitivity = 1.0;
+  let tiltAxis = 0;
   let currentLevel = 1;
   let levelThreshold = 10; // retained for display compatibility
   let scoreMultiplier = 1; // retained for display compatibility
@@ -87,9 +102,11 @@
     landing: document.getElementById('landing'),
     leaderboard: document.getElementById('leaderboard'),
     gameOver: document.getElementById('gameOver'),
+    tutorial: document.getElementById('tutorial'),
     lbList: document.getElementById('leaderboardList'),
     startBtn: document.getElementById('startBtn'),
     leaderboardBtn: document.getElementById('leaderboardBtn'),
+    tutorialBtn: document.getElementById('tutorialBtn'),
     backFromLeaderboard: document.getElementById('backFromLeaderboard'),
     nameForm: document.getElementById('nameForm'),
     playerName: document.getElementById('playerName'),
@@ -98,6 +115,22 @@
     moveLeft: document.getElementById('moveLeft'),
     moveRight: document.getElementById('moveRight'),
     soundToggle: document.getElementById('soundToggle'),
+    vibrationToggle: document.getElementById('vibrationToggle'),
+    pauseBtn: document.getElementById('pauseBtn'),
+    playAgainBtn: document.getElementById('playAgainBtn'),
+    countdown: document.getElementById('countdown'),
+    countdownLabel: document.getElementById('countdownLabel'),
+    zoneLeft: document.getElementById('zoneLeft'),
+    zoneRight: document.getElementById('zoneRight'),
+    settingsBtn: document.getElementById('settingsBtn'),
+    settings: document.getElementById('settings'),
+    settingsForm: document.getElementById('settingsForm'),
+    enableTilt: document.getElementById('enableTilt'),
+    requestMotionPermission: document.getElementById('requestMotionPermission'),
+    tiltSensitivity: document.getElementById('tiltSensitivity'),
+    enableMusic: document.getElementById('enableMusic'),
+    reducedMotion: document.getElementById('reducedMotion'),
+    closeSettings: document.getElementById('closeSettings'),
   };
 
   document.getElementById('year').textContent = new Date().getFullYear().toString();
@@ -177,6 +210,50 @@
     }
   }
 
+  // Preference init
+  try {
+    const prefSound = localStorage.getItem(SOUND_PREF_KEY);
+    if (prefSound != null) soundEnabled = prefSound === '1';
+  } catch {}
+  try {
+    const prefVib = localStorage.getItem(VIBRATE_PREF_KEY);
+    if (prefVib != null) vibrationEnabled = prefVib === '1';
+  } catch {}
+  try { const v = localStorage.getItem(MUSIC_PREF_KEY); if (v != null) musicEnabled = v === '1'; } catch {}
+  try { const v = localStorage.getItem(REDUCED_MOTION_PREF_KEY); if (v != null) reducedMotion = v === '1'; } catch {}
+  try { const v = localStorage.getItem(TILT_PREF_KEY); if (v != null) tiltEnabled = v === '1'; } catch {}
+  try { const v = localStorage.getItem(TILT_SENS_PREF_KEY); if (v != null) { const n = Number(v); if (Number.isFinite(n)) tiltSensitivity = Math.max(0.2, Math.min(3, n)); } } catch {}
+  if (el.soundToggle) el.soundToggle.textContent = `Sound: ${soundEnabled ? 'On' : 'Off'}`;
+  if (el.vibrationToggle) el.vibrationToggle.textContent = `Vibrate: ${vibrationEnabled ? 'On' : 'Off'}`;
+  if (el.enableMusic) el.enableMusic.checked = musicEnabled;
+  if (el.enableTilt) el.enableTilt.checked = tiltEnabled;
+  if (el.tiltSensitivity) el.tiltSensitivity.value = String(tiltSensitivity);
+  if (el.reducedMotion) el.reducedMotion.checked = reducedMotion;
+
+  // DPR-aware canvas sizing
+  function resizeCanvas() {
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const aspect = 4 / 3;
+    const container = canvas.parentElement;
+    const maxW = Math.min(960, (container ? container.clientWidth : window.innerWidth) - 32);
+    const maxH = Math.min(720, (container ? container.clientHeight : window.innerHeight) - 180);
+    let displayWidth = Math.max(320, Math.floor(maxW));
+    let displayHeight = Math.floor(displayWidth / aspect);
+    if (displayHeight > maxH) {
+      displayHeight = Math.max(240, Math.floor(maxH));
+      displayWidth = Math.floor(displayHeight * aspect);
+    }
+    canvas.style.width = displayWidth + 'px';
+    canvas.style.height = displayHeight + 'px';
+    canvas.width = Math.floor(displayWidth * dpr);
+    canvas.height = Math.floor(displayHeight * dpr);
+    screen.width = displayWidth;
+    screen.height = displayHeight;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  window.addEventListener('resize', resizeCanvas);
+  resizeCanvas();
+
   // Helpers
   function rectsOverlap(ax, ay, aw, ah, bx, by, bw, bh) {
     return ax < bx + bw && ax + aw > bx && ay < by + bh && ah + ay > by;
@@ -206,6 +283,11 @@
     try { sfx.collision.currentTime = 0; sfx.collision.play(); } catch {}
   }
 
+  function haptic(pattern) {
+    if (!vibrationEnabled) return;
+    try { if (navigator.vibrate) navigator.vibrate(pattern); } catch {}
+  }
+
   // Game lifecycle
   function resetGame() {
     score = 0;
@@ -220,10 +302,42 @@
   }
 
   function showOverlay(which) {
-    for (const k of ['landing', 'leaderboard', 'gameOver']) {
+    for (const k of ['landing', 'leaderboard', 'gameOver', 'settings', 'tutorial']) {
       el[k].classList.remove('visible');
     }
     if (which) el[which].classList.add('visible');
+  }
+
+  function showCountdownOverlay(show) {
+    if (!el.countdown) return;
+    if (show) el.countdown.classList.add('visible');
+    else el.countdown.classList.remove('visible');
+  }
+
+  async function startGameWithCountdown() {
+    running = false;
+    paused = false;
+    resetGame();
+    if (!el.countdown || !el.countdownLabel) {
+      showOverlay();
+      running = true;
+      return;
+    }
+    showOverlay();
+    showCountdownOverlay(true);
+    const steps = ['3', '2', '1', 'Go!'];
+    for (let i = 0; i < steps.length; i += 1) {
+      el.countdownLabel.textContent = steps[i];
+      haptic(i < 3 ? 30 : [60, 60, 60]);
+      await new Promise((r) => setTimeout(r, i < 3 ? 550 : 350));
+    }
+    showCountdownOverlay(false);
+    if (musicEnabled) {
+      try { bgm.currentTime = 0; bgm.volume = 0.6; bgm.play(); } catch {}
+    } else {
+      try { bgm.pause(); } catch {}
+    }
+    running = true;
   }
 
   function drawHUD() {
@@ -345,7 +459,7 @@
           streak = 0;
           invulnerableFor = 1.2; // brief invulnerability after hit
           // Screen shake on damage
-          screenShake.intensity = 10;
+          screenShake.intensity = reducedMotion ? 4 : 10;
           // Add damage particles
           for (let i = 0; i < 12; i++) {
             particles.push({
@@ -483,14 +597,16 @@
       ctx.restore();
     }
 
-    // Draw particles
-    for (const p of particles) {
-      const alpha = Math.max(0, p.life);
-      ctx.globalAlpha = alpha;
-      ctx.fillStyle = p.color;
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, 3 * alpha, 0, Math.PI * 2);
-      ctx.fill();
+    // Draw particles (skip in reduced motion)
+    if (!reducedMotion) {
+      for (const p of particles) {
+        const alpha = Math.max(0, p.life);
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = p.color;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 3 * alpha, 0, Math.PI * 2);
+        ctx.fill();
+      }
     }
     ctx.globalAlpha = 1.0;
     
@@ -507,7 +623,7 @@
       ctx.fillStyle = COLORS.WHITE;
       ctx.font = 'bold 36px Arial';
       ctx.textAlign = 'center';
-      ctx.fillText('Paused — press P to resume', screen.width / 2, screen.height / 2);
+      ctx.fillText('Paused — press P or tap Resume', screen.width / 2, screen.height / 2);
       ctx.restore();
     }
   }
@@ -526,29 +642,97 @@
     if (e.key === 'ArrowLeft') player.leftPressed = true;
     if (e.key === 'ArrowRight') player.rightPressed = true;
     if (e.key.toLowerCase() === 'p') paused = !paused;
+    if (el.pauseBtn) el.pauseBtn.textContent = paused ? 'Resume' : 'Pause';
   });
   window.addEventListener('keyup', (e) => {
     if (e.key === 'ArrowLeft') player.leftPressed = false;
     if (e.key === 'ArrowRight') player.rightPressed = false;
   });
 
-  el.moveLeft.addEventListener('touchstart', () => (player.leftPressed = true));
+  // Prevent double-tap zoom and double-click zoom on mobile
+  let lastTouchEnd = 0;
+  document.addEventListener('touchend', (e) => {
+    const now = performance.now();
+    if (now - lastTouchEnd <= 300) {
+      e.preventDefault();
+    }
+    lastTouchEnd = now;
+  }, { passive: false });
+  document.addEventListener('dblclick', (e) => e.preventDefault());
+
+  // On-screen pads
+  el.moveLeft.addEventListener('touchstart', (e) => { e.preventDefault(); player.leftPressed = true; }, { passive: false });
   el.moveLeft.addEventListener('touchend', () => (player.leftPressed = false));
-  el.moveRight.addEventListener('touchstart', () => (player.rightPressed = true));
+  el.moveLeft.addEventListener('mousedown', () => (player.leftPressed = true));
+  el.moveLeft.addEventListener('mouseup', () => (player.leftPressed = false));
+  el.moveRight.addEventListener('touchstart', (e) => { e.preventDefault(); player.rightPressed = true; }, { passive: false });
   el.moveRight.addEventListener('touchend', () => (player.rightPressed = false));
+  el.moveRight.addEventListener('mousedown', () => (player.rightPressed = true));
+  el.moveRight.addEventListener('mouseup', () => (player.rightPressed = false));
+
+  // Full-width touch zones for left/right halves
+  if (el.zoneLeft && el.zoneRight) {
+    const onLeftStart = (e) => { e.preventDefault(); player.leftPressed = true; };
+    const onLeftEnd = (e) => { e.preventDefault(); player.leftPressed = false; };
+    const onRightStart = (e) => { e.preventDefault(); player.rightPressed = true; };
+    const onRightEnd = (e) => { e.preventDefault(); player.rightPressed = false; };
+    el.zoneLeft.addEventListener('touchstart', onLeftStart, { passive: false });
+    el.zoneLeft.addEventListener('touchend', onLeftEnd, { passive: false });
+    el.zoneLeft.addEventListener('touchcancel', onLeftEnd, { passive: false });
+    el.zoneRight.addEventListener('touchstart', onRightStart, { passive: false });
+    el.zoneRight.addEventListener('touchend', onRightEnd, { passive: false });
+    el.zoneRight.addEventListener('touchcancel', onRightEnd, { passive: false });
+  }
+
+  // Tilt controls
+  function handleDeviceOrientation(e) {
+    if (!tiltEnabled) { tiltAxis = 0; return; }
+    // gamma: left-right tilt in degrees (-90 to 90). Positive tilt right on iOS.
+    const gamma = (typeof e.gamma === 'number') ? e.gamma : 0;
+    tiltAxis = Math.max(-1, Math.min(1, gamma / 30));
+  }
+  function handleDeviceMotion(e) {
+    if (!tiltEnabled) { tiltAxis = 0; return; }
+    const acc = e.accelerationIncludingGravity;
+    if (acc && typeof acc.x === 'number') {
+      // Invert on some platforms; keep heuristic that right tilt => positive axis
+      const x = -acc.x;
+      const norm = Math.max(-1, Math.min(1, x / 9.8));
+      // Prefer orientation if available; this acts as a fallback noise smoother
+      if (Math.abs(norm) > Math.abs(tiltAxis)) tiltAxis = norm * 0.7;
+    }
+  }
+  function attachMotionListeners() {
+    window.addEventListener('deviceorientation', handleDeviceOrientation);
+    window.addEventListener('devicemotion', handleDeviceMotion);
+  }
+  function detachMotionListeners() {
+    window.removeEventListener('deviceorientation', handleDeviceOrientation);
+    window.removeEventListener('devicemotion', handleDeviceMotion);
+  }
+  function setTiltEnabled(next) {
+    tiltEnabled = next;
+    if (tiltEnabled) attachMotionListeners(); else detachMotionListeners();
+    try { localStorage.setItem(TILT_PREF_KEY, tiltEnabled ? '1' : '0'); } catch {}
+  }
+  if (tiltEnabled) attachMotionListeners();
 
   // Buttons
-  el.startBtn.addEventListener('click', () => {
+  el.startBtn.addEventListener('click', async () => {
     playClick();
-    showOverlay();
-    resetGame();
-    running = true;
+    await startGameWithCountdown();
   });
   el.leaderboardBtn.addEventListener('click', () => {
     playClick();
     renderLeaderboard();
     showOverlay('leaderboard');
   });
+  if (el.tutorialBtn) {
+    el.tutorialBtn.addEventListener('click', () => {
+      playClick();
+      showOverlay('tutorial');
+    });
+  }
   el.backFromLeaderboard.addEventListener('click', () => {
     playClick();
     showOverlay('landing');
@@ -573,11 +757,114 @@
   el.soundToggle.addEventListener('click', () => {
     soundEnabled = !soundEnabled;
     el.soundToggle.textContent = `Sound: ${soundEnabled ? 'On' : 'Off'}`;
+    try { localStorage.setItem(SOUND_PREF_KEY, soundEnabled ? '1' : '0'); } catch {}
     playClick();
   });
 
+  if (el.vibrationToggle) {
+    el.vibrationToggle.addEventListener('click', () => {
+      vibrationEnabled = !vibrationEnabled;
+      el.vibrationToggle.textContent = `Vibrate: ${vibrationEnabled ? 'On' : 'Off'}`;
+      try { localStorage.setItem(VIBRATE_PREF_KEY, vibrationEnabled ? '1' : '0'); } catch {}
+      haptic(15);
+      playClick();
+    });
+  }
+
+  if (el.pauseBtn) {
+    el.pauseBtn.addEventListener('click', () => {
+      paused = !paused;
+      el.pauseBtn.textContent = paused ? 'Resume' : 'Pause';
+      playClick();
+    });
+  }
+
+  // Settings overlay logic
+  if (el.settingsBtn && el.settings) {
+    el.settingsBtn.addEventListener('click', () => { playClick(); showOverlay('settings'); });
+  }
+  if (el.closeSettings) {
+    el.closeSettings.addEventListener('click', () => { playClick(); showOverlay(); });
+  }
+  const closeTutorialBtn = document.getElementById('closeTutorial');
+  if (closeTutorialBtn) {
+    closeTutorialBtn.addEventListener('click', () => {
+      playClick();
+      try { localStorage.setItem('bollard-striker-seen-tutorial', '1'); } catch {}
+      showOverlay('landing');
+    });
+  }
+  if (el.enableMusic) {
+    el.enableMusic.addEventListener('change', () => {
+      musicEnabled = !!el.enableMusic.checked;
+      try { localStorage.setItem(MUSIC_PREF_KEY, musicEnabled ? '1' : '0'); } catch {}
+      if (!musicEnabled) { try { bgm.pause(); } catch {} } else if (running) { try { bgm.currentTime = 0; bgm.play(); } catch {} }
+    });
+  }
+  if (el.reducedMotion) {
+    el.reducedMotion.addEventListener('change', () => {
+      reducedMotion = !!el.reducedMotion.checked;
+      try { localStorage.setItem(REDUCED_MOTION_PREF_KEY, reducedMotion ? '1' : '0'); } catch {}
+    });
+  }
+  if (el.enableTilt) {
+    el.enableTilt.addEventListener('change', () => {
+      setTiltEnabled(!!el.enableTilt.checked);
+    });
+  }
+  if (el.tiltSensitivity) {
+    el.tiltSensitivity.addEventListener('input', () => {
+      const n = Number(el.tiltSensitivity.value);
+      if (Number.isFinite(n)) {
+        tiltSensitivity = Math.max(0.2, Math.min(3, n));
+        try { localStorage.setItem(TILT_SENS_PREF_KEY, String(tiltSensitivity)); } catch {}
+      }
+    });
+  }
+  if (el.requestMotionPermission && typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
+    el.requestMotionPermission.addEventListener('click', async () => {
+      try {
+        const res = await DeviceMotionEvent.requestPermission();
+        if (res === 'granted') {
+          setTiltEnabled(true);
+          if (el.enableTilt) el.enableTilt.checked = true;
+        }
+      } catch {}
+    });
+  }
+
+  if (el.playAgainBtn) {
+    el.playAgainBtn.addEventListener('click', async () => {
+      playClick();
+      await startGameWithCountdown();
+    });
+  }
+
+  // Auto-pause when tab hidden
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden && running) {
+      paused = true;
+      if (el.pauseBtn) el.pauseBtn.textContent = 'Resume';
+    }
+  });
+
+  // Apply tilt movement in update loop by polling tiltAxis
+  const originalUpdate = update;
+  update = function(dt) {
+    if (tiltEnabled && !paused && running) {
+      const delta = tiltAxis * (player.speed * tiltSensitivity) * dt;
+      player.x += delta;
+    }
+    originalUpdate(dt);
+  };
+
   // Kick things off
   initBollards();
+  // Show tutorial once for first-time users
+  try {
+    const seen = localStorage.getItem('bollard-striker-seen-tutorial');
+    if (!seen) showOverlay('tutorial');
+  } catch {}
   requestAnimationFrame(loop);
 })();
 

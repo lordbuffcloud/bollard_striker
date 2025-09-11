@@ -2,7 +2,11 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <meta name="theme-color" content="#2c2f33" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="color-scheme" content="dark light" />
   <title>Bollard Striker</title>
   <link rel="icon" href="bollard_striker/favicon.ico" />
   <link rel="preload" as="image" href="bollard_striker/visitor.png" />
@@ -20,12 +24,21 @@
       </div>
       <div class="actions">
         <button id="soundToggle" class="btn">Sound: Off</button>
+        <button id="vibrationToggle" class="btn">Vibrate: Off</button>
+        <button id="pauseBtn" class="btn">Pause</button>
+        <button id="settingsBtn" class="btn">Settings</button>
         <a class="link" href="https://github.com/lordbuffcloud/bollard_striker" target="_blank" rel="noopener noreferrer">Repo</a>
       </div>
     </header>
 
     <main class="stage">
       <canvas id="game" width="800" height="600"></canvas>
+
+      <!-- Touch zones overlay for mobile -->
+      <div class="touch-zones" aria-hidden="true">
+        <div id="zoneLeft" class="zone left"></div>
+        <div id="zoneRight" class="zone right"></div>
+      </div>
 
       <!-- Landing overlay -->
       <section id="landing" class="overlay visible">
@@ -34,8 +47,14 @@
         <div class="cta-row">
           <button id="startBtn" class="btn primary">Start</button>
           <button id="leaderboardBtn" class="btn">View Leaderboard</button>
+          <button id="tutorialBtn" class="btn">How to Play</button>
         </div>
         <p class="credit">Created by SSgt King</p>
+      </section>
+
+      <!-- Countdown overlay -->
+      <section id="countdown" class="overlay">
+        <h2 id="countdownLabel">3</h2>
       </section>
 
       <!-- Leaderboard overlay -->
@@ -44,6 +63,64 @@
         <ol id="leaderboardList" class="board"></ol>
         <div class="cta-row">
           <button id="backFromLeaderboard" class="btn">Back</button>
+        </div>
+      </section>
+
+      <!-- Settings overlay -->
+      <section id="settings" class="overlay">
+        <h2>Settings</h2>
+        <form id="settingsForm" class="settings-form">
+          <div class="field">
+            <label class="row"><input type="checkbox" id="enableTilt" /> <span>Enable Tilt Controls</span></label>
+            <button type="button" id="requestMotionPermission" class="btn">Enable Motion Access (iOS)</button>
+          </div>
+          <div class="field">
+            <label for="tiltSensitivity">Tilt Sensitivity</label>
+            <input type="range" id="tiltSensitivity" min="0.2" max="3" step="0.1" />
+          </div>
+          <div class="field row">
+            <label class="row"><input type="checkbox" id="enableMusic" /> <span>Background Music</span></label>
+          </div>
+          <div class="field row">
+            <label class="row"><input type="checkbox" id="reducedMotion" /> <span>Reduced Motion</span></label>
+          </div>
+        </form>
+        <div class="cta-row">
+          <button id="closeSettings" class="btn">Close</button>
+        </div>
+      </section>
+
+      <!-- Tutorial overlay -->
+      <section id="tutorial" class="overlay">
+        <h2>How to Play</h2>
+        <div class="howto">
+          <div class="card">
+            <h3>Goal</h3>
+            <p>Avoid the bollards. Survive, score points, and build your streak.</p>
+          </div>
+          <div class="card">
+            <h3>Controls</h3>
+            <ul>
+              <li>Mobile: tap left/right half of the screen or use on-screen pads.</li>
+              <li>Optional: enable Tilt in Settings and set sensitivity.</li>
+              <li>Desktop: use Left/Right arrow keys. Press P to pause.</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>Power-ups</h3>
+            <p>Collect the blue shield to absorb one hit. Keep your streak to boost score.</p>
+          </div>
+          <div class="card">
+            <h3>Tips</h3>
+            <ul>
+              <li>Watch lane lines to judge gaps.</li>
+              <li>High streaks increase difficulty and score multiplier.</li>
+              <li>Turn on Reduced Motion in Settings if effects feel intense.</li>
+            </ul>
+          </div>
+        </div>
+        <div class="cta-row">
+          <button id="closeTutorial" class="btn primary">Got it</button>
         </div>
       </section>
 
@@ -57,6 +134,9 @@
           <input id="playerName" name="playerName" maxlength="20" autocomplete="off" />
           <button type="submit" class="btn primary">Save</button>
         </form>
+        <div class="cta-row">
+          <button id="playAgainBtn" class="btn">Play Again</button>
+        </div>
       </section>
 
       <!-- Mobile controls -->

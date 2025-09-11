@@ -61,6 +61,50 @@ Because *bollard strikes* are a thing. Like, a everyday thing. Drivers hitting t
 
 We keep track of who’s the best at *not* slamming into bollards. At the end of each game, you’ll be asked to input your name so you can cement your legacy (or your eternal shame). Only the greatest—or worst—shall be remembered.
 
+### Global Leaderboard with Supabase (optional)
+
+Backend selection is automatic in `/api/leaderboard.js`:
+- If `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are set, Supabase is used
+- Else if Vercel KV is configured, KV is used
+- Else it falls back to localStorage in the browser
+
+Setup steps:
+1. Create a Supabase project
+2. In SQL editor, create table and RLS policy:
+```
+create table if not exists public.leaderboard (
+  id bigint generated always as identity primary key,
+  name text not null,
+  score int not null default 0,
+  level int not null default 1,
+  date timestamp with time zone not null default now()
+);
+
+-- Optional: cap name length frontend, but you can also enforce here
+create or replace function public.clean_name(n text) returns text language sql immutable as $$
+  select left(coalesce(trim(n), 'Anonymous'), 20)
+$$;
+
+-- RLS (optional for public read, service-role writes)
+alter table public.leaderboard enable row level security;
+create policy "public read" on public.leaderboard for select using (true);
+-- Writes are done by service role key in the serverless function
+```
+
+3. Grab `Project URL` and `Service Role Key` from Supabase settings
+4. Set env vars in Vercel project settings:
+```
+SUPABASE_URL=https://YOUR-PROJECT.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=YOUR_SERVICE_ROLE
+```
+5. Deploy or run locally with:
+```
+npx vercel dev
+```
+The frontend will now read/write the global leaderboard from Supabase.
+
+Note: Service Role Key must only be used server-side (in `/api/leaderboard.js`). Do NOT expose it client-side.
+
 ## Requirements
 
 - **Python 3.6+**

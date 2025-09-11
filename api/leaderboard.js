@@ -1,8 +1,12 @@
 // Vercel Serverless Function for a global leaderboard
-// Uses Vercel KV (Upstash Redis REST) if KV_REST_API_URL and KV_REST_API_TOKEN are set
-// Falls back to 501 when not configured (frontend will fall back to localStorage)
+// Backends (priority order):
+// 1) Supabase (PostgREST) if SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are set
+// 2) Vercel KV (Upstash Redis REST) if KV_REST_API_URL and KV_REST_API_TOKEN are set
+// 3) Falls back to 501 when not configured (frontend will fall back to localStorage)
 
 const KEY = 'bollard_striker:leaderboard';
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET;
 
 async function kvPipeline(commands) {
   const url = process.env.KV_REST_API_URL;
@@ -72,14 +76,56 @@ function mergedTop(entries, newEntry) {
   return unique.slice(0, 25);
 }
 
+// Supabase backend (via PostgREST)
+async function sbFetchRaw(limit = 100) {
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) throw new Error('SB not configured');
+  const url = `${SUPABASE_URL}/rest/v1/leaderboard?select=*&order=score.desc&limit=${encodeURIComponent(String(limit))}`;
+  const resp = await fetch(url, {
+    method: 'GET',
+    headers: {
+      apikey: SUPABASE_SERVICE_ROLE_KEY,
+      Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+      'Content-Type': 'application/json',
+      Prefer: 'count=none'
+    }
+  });
+  if (!resp.ok) throw new Error(`SB fetch error ${resp.status}`);
+  const data = await resp.json();
+  return Array.isArray(data) ? data : [];
+}
+
+async function sbInsert(entry) {
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) throw new Error('SB not configured');
+  const url = `${SUPABASE_URL}/rest/v1/leaderboard`;
+  const payload = sanitizeEntry(entry);
+  const resp = await fetch(url, {
+    method: 'POST',
+    headers: {
+      apikey: SUPABASE_SERVICE_ROLE_KEY,
+      Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+      'Content-Type': 'application/json',
+      Prefer: 'return=minimal'
+    },
+    body: JSON.stringify(payload)
+  });
+  if (!resp.ok) throw new Error(`SB insert error ${resp.status}`);
+}
+
 module.exports = async (req, res) => {
   res.setHeader('Content-Type', 'application/json');
   res.setHeader('Cache-Control', 'no-store');
   try {
     if (req.method === 'GET') {
+      // Prefer Supabase if configured
+      if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
+        const raw = await sbFetchRaw(100);
+        const entries = normalize(raw).sort((a, b) => Number(b.score) - Number(a.score)).slice(0, 25);
+        return res.status(200).end(JSON.stringify({ entries }));
+      }
+
+      // Fallback to KV
       const entriesRaw = await kvGetLeaderboard(); // allow error to throw
       const entries = normalize(entriesRaw);
-      // Ensure lore is persisted if KV configured
       try { await kvSetLeaderboard(entries); } catch {}
       return res.status(200).end(JSON.stringify({ entries }));
     }
@@ -94,6 +140,17 @@ module.exports = async (req, res) => {
         req.on('error', reject);
       });
       const entry = sanitizeEntry(body || {});
+      // Prefer Supabase if configured
+      if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
+        await sbInsert(entry);
+        // Fetch raw top, then de-duplicate by name keeping highest
+        const raw = await sbFetchRaw(100);
+        const top = normalize(raw);
+        const unique = mergedTop(top, WOODPECKER_ENTRY); // ensure lore in list
+        return res.status(200).end(JSON.stringify({ entries: unique }));
+      }
+
+      // Fallback to KV
       const current = normalize(await kvGetLeaderboard().catch(() => []));
       const next = mergedTop(current, entry);
       await kvSetLeaderboard(next);
