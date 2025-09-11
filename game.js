@@ -76,11 +76,37 @@
   // Bollards
   const bollards = [];
   const bollard = { width: 50, height: 50, speed: 150 }; // pixels per second (better starting speed)
+  function isCoarsePointer() {
+    return (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) || (window.innerWidth <= 820);
+  }
+  function pickSpawnX(newY) {
+    // Try multiple candidates; prefer those far from neighbors in same vertical band
+    const tries = 24;
+    const minGap = Math.max(60, Math.floor(player.width * 0.8));
+    let bestX = 0;
+    let bestScore = -Infinity;
+    for (let t = 0; t < tries; t += 1) {
+      const x = Math.floor(Math.random() * (screen.width - bollard.width));
+      let ok = true;
+      let nearest = Infinity;
+      for (const other of bollards) {
+        if (Math.abs((other.y || 0) - newY) < 220) {
+          const dx = Math.abs(other.x - x);
+          nearest = Math.min(nearest, dx);
+          if (dx < minGap) { ok = false; break; }
+        }
+      }
+      if (ok) return x;
+      if (nearest > bestScore) { bestScore = nearest; bestX = x; }
+    }
+    return bestX; // fallback to farthest candidate
+  }
   function initBollards() {
     bollards.length = 0;
-    for (let i = 0; i < 5; i += 1) {
-      const x = Math.floor(Math.random() * (screen.width - bollard.width));
-      const y = Math.floor(-50 - Math.random() * 100);
+    const count = isCoarsePointer() ? 3 : 5;
+    for (let i = 0; i < count; i += 1) {
+      const y = Math.floor(-50 - Math.random() * 150);
+      const x = pickSpawnX(y);
       bollards.push({ x, y });
     }
   }
@@ -276,9 +302,13 @@
     return { x: cx, y: cy, w: cw, h: ch };
   }
   function recalcDifficulty() {
-    // Progressive difficulty: +15 px/s every 5 points, reasonable cap
-    const incrementSteps = Math.floor(score / 5);
-    const target = 150 + Math.min(25, incrementSteps) * 15; // cap +375 px/s
+    // Progressive difficulty with gentler mobile curve
+    const coarse = isCoarsePointer();
+    const incrementSteps = Math.floor(score / (coarse ? 6 : 5));
+    const base = coarse ? 120 : 150;
+    const step = coarse ? 10 : 15;
+    const capSteps = 25;
+    const target = base + Math.min(capSteps, incrementSteps) * step;
     bollard.speed = target;
     // Derive a level for display (every 8 points for more frequent level-ups)
     currentLevel = Math.max(1, Math.floor(score / 8) + 1);
@@ -307,7 +337,8 @@
     scoreMultiplier = 1;
     player.x = Math.floor(screen.width / 2) - 50;
     player.y = screen.height - 150;
-    bollard.speed = 150;
+    bollard.speed = isCoarsePointer() ? 120 : 150;
+    player.speed = isCoarsePointer() ? 520 : 420;
     initBollards();
   }
 
@@ -412,8 +443,8 @@
     for (const b of bollards) {
       b.y += bollard.speed * dt;
       if (b.y > screen.height) {
-        b.y = Math.floor(-50 - Math.random() * 100);
-        b.x = Math.floor(Math.random() * (screen.width - bollard.width));
+        b.y = Math.floor(-80 - Math.random() * 140);
+        b.x = pickSpawnX(b.y);
         // scoring with combo
         streak += 1;
         bestStreak = Math.max(bestStreak, streak);
@@ -486,8 +517,8 @@
           }
           // reset bollards with extra spacing so immediate re-hit is less likely on mobile
           for (const r of bollards) {
-            r.y = Math.floor(-100 - Math.random() * 150);
-            r.x = Math.floor(Math.random() * (screen.width - bollard.width));
+            r.y = Math.floor(-120 - Math.random() * 180);
+            r.x = pickSpawnX(r.y);
           }
         }
         break;
