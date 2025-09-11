@@ -26,6 +26,12 @@
   bollardImg.src = 'bollard_striker/bollard.png';
   const whiteMonsterImg = new Image();
   whiteMonsterImg.src = 'white_monster.png';
+  function canDraw(img) {
+    return !!(img && img.complete && img.naturalWidth > 0);
+  }
+  visitorImg.onerror = () => {};
+  bollardImg.onerror = () => {};
+  whiteMonsterImg.onerror = () => {};
 
   const sfx = {
     collision: new Audio('bollard_striker/sounds/collision.mp3'),
@@ -520,6 +526,15 @@
         const comboBonus = 1 + Math.min(12, Math.floor(streak / 5)); // Slightly gentler scaling for mobile fairness
         score += comboBonus;
         dodgeSinceLastLaser += 1;
+        // On mobile, gradually increase bollard count for more challenge
+        if (isCoarsePointer()) {
+          const desired = score >= 12 ? 2 : 1;
+          while (bollards.length < desired) {
+            const ny = Math.floor(-140 - Math.random() * 220);
+            const nx = pickSpawnX(ny);
+            bollards.push({ x: nx, y: ny });
+          }
+        }
         
         // Add particles for successful dodge
         for (let i = 0; i < (isCoarsePointer() ? 1 : 3); i++) {
@@ -700,12 +715,20 @@
     // Player (flicker when invulnerable)
     const flicker = invulnerableFor > 0 && Math.floor(performance.now() / 100) % 2 === 0;
     if (!flicker) {
-      ctx.drawImage(visitorImg, player.x, player.y, player.width, player.height);
+      if (canDraw(visitorImg)) ctx.drawImage(visitorImg, player.x, player.y, player.width, player.height);
+      else {
+        ctx.fillStyle = COLORS.NEON_GREEN;
+        ctx.fillRect(player.x, player.y, player.width, player.height);
+      }
     }
 
     // Bollards
     for (const b of bollards) {
-      ctx.drawImage(bollardImg, b.x, b.y, bollard.width, bollard.height);
+      if (canDraw(bollardImg)) ctx.drawImage(bollardImg, b.x, b.y, bollard.width, bollard.height);
+      else {
+        ctx.fillStyle = COLORS.CAUTION_YELLOW;
+        ctx.fillRect(b.x, b.y, bollard.width, bollard.height);
+      }
     }
 
     // Shield power-up rendering
@@ -739,7 +762,13 @@
       ctx.beginPath();
       ctx.arc(0, 0, laserPU.size, 0, Math.PI * 2);
       ctx.fill();
-      ctx.drawImage(whiteMonsterImg, -laserPU.size * 0.6, -laserPU.size * 0.6, laserPU.size * 1.2, laserPU.size * 1.2);
+      if (canDraw(whiteMonsterImg)) ctx.drawImage(whiteMonsterImg, -laserPU.size * 0.6, -laserPU.size * 0.6, laserPU.size * 1.2, laserPU.size * 1.2);
+      else {
+        ctx.fillStyle = COLORS.WHITE;
+        ctx.beginPath();
+        ctx.arc(0, 0, laserPU.size * 0.6, 0, Math.PI * 2);
+        ctx.fill();
+      }
       ctx.restore();
     }
 
@@ -855,10 +884,11 @@
     document.removeEventListener('mousedown', tryStartMusicFromGesture);
     document.removeEventListener('keydown', tryStartMusicFromGesture);
   }
-  document.addEventListener('touchstart', tryStartMusicFromGesture, { passive: true, once: true });
-  document.addEventListener('pointerdown', tryStartMusicFromGesture, { once: true });
-  document.addEventListener('mousedown', tryStartMusicFromGesture, { once: true });
-  document.addEventListener('keydown', tryStartMusicFromGesture, { once: true });
+  // Attach persistent unlockers; we detach only on success
+  document.addEventListener('touchstart', tryStartMusicFromGesture, { passive: true });
+  document.addEventListener('pointerdown', tryStartMusicFromGesture);
+  document.addEventListener('mousedown', tryStartMusicFromGesture);
+  document.addEventListener('keydown', tryStartMusicFromGesture);
 
   // Prevent double-tap zoom and double-click zoom on mobile
   let lastTouchEnd = 0;
