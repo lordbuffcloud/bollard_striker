@@ -140,7 +140,7 @@
     if (laserPU.visible || laserPU.active) return;
     // Small chance per dodge, slightly higher on desktop to raise difficulty
     const chance = isCoarsePointer() ? 0.08 : 0.12;
-    const guaranteed = dodgeSinceLastLaser >= (isCoarsePointer() ? 10 : 8);
+    const guaranteed = dodgeSinceLastLaser >= (isCoarsePointer() ? 5 : 8);
     if (guaranteed || Math.random() < chance) {
       laserPU.visible = true;
       laserPU.x = Math.floor(16 + Math.random() * (screen.width - 32));
@@ -175,6 +175,7 @@
     zoneLeft: document.getElementById('zoneLeft'),
     zoneRight: document.getElementById('zoneRight'),
     settingsBtn: document.getElementById('settingsBtn'),
+    settingsFab: document.getElementById('settingsFab'),
     settings: document.getElementById('settings'),
     settingsForm: document.getElementById('settingsForm'),
     enableTilt: document.getElementById('enableTilt'),
@@ -376,8 +377,8 @@
       player.height = player.width;
       bollard.width = Math.max(34, Math.floor(lanes.width * 0.32));
       bollard.height = bollard.width;
-      player.speed = 880; // slight reduction to restore challenge
-      bollard.speed = 70; // slightly faster
+      player.speed = 900;
+      bollard.speed = 80;
     } else {
       player.width = 100;
       player.height = 100;
@@ -430,7 +431,7 @@
       await new Promise((r) => setTimeout(r, i < 3 ? 550 : 350));
     }
     showCountdownOverlay(false);
-    if (musicEnabled) {
+    if (musicEnabled || isCoarsePointer()) {
       try { bgm.currentTime = 0; bgm.volume = 0.6; await bgm.play(); bgmUnlocked = true; } catch {}
     } else {
       try { bgm.pause(); } catch {}
@@ -993,6 +994,9 @@
   // Settings overlay logic
   if (el.settingsBtn && el.settings) {
     el.settingsBtn.addEventListener('click', () => { playClick(); showOverlay('settings'); });
+  }
+  if (el.settingsFab && el.settings) {
+    el.settingsFab.addEventListener('click', () => { playClick(); showOverlay('settings'); });
   }
   if (el.closeSettings) {
     el.closeSettings.addEventListener('click', () => { playClick(); showOverlay(); });
