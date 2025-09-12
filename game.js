@@ -300,7 +300,7 @@
   function resizeCanvas() {
     const dpr = Math.min(2, window.devicePixelRatio || 1);
     const coarse = (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) || (window.innerWidth <= 820);
-    const aspect = coarse ? 9 / 16 : 4 / 3;
+    const aspect = 4 / 3;
     const topbar = document.querySelector('.topbar');
     const isCoarse = coarse;
     const headerH = isCoarse ? 0 : (topbar ? topbar.offsetHeight : 0);
@@ -327,7 +327,7 @@
 
     // Recalculate lane layout
     const coarse = (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) || (window.innerWidth <= 820);
-    lanes.count = coarse ? 2 : 5;
+    lanes.count = coarse ? 3 : 5;
     lanes.width = Math.max(160, Math.floor(screen.width / lanes.count));
 
     // Adjust sizes for current viewport
@@ -353,15 +353,15 @@
   function recalcDifficulty() {
     // Progressive difficulty with gentler mobile curve
     const coarse = isCoarsePointer();
-    const incrementSteps = Math.floor(score / (coarse ? 4 : 4));
-    const base = coarse ? 140 : 160;
-    const step = coarse ? 16 : 18;
+    const incrementSteps = Math.floor(score / (coarse ? 6 : 5));
+    const base = coarse ? 110 : 160;
+    const step = coarse ? 12 : 18;
     const capSteps = coarse ? 20 : 28;
     const raw = base + Math.min(capSteps, incrementSteps) * step;
     // Strong damping on mobile and cap speed low
     if (coarse) {
       const proximity = Math.max(0, Math.min(1, (screen.height - player.y) / screen.height));
-      bollard.speed = Math.min(240, Math.max(100, raw * (0.9 + 0.1 * proximity)));
+      bollard.speed = Math.min(200, Math.max(90, raw * (0.88 + 0.12 * proximity)));
     } else {
       bollard.speed = raw;
     }
@@ -389,10 +389,10 @@
     if (coarse) {
       player.width = Math.max(48, Math.floor(screen.width * 0.10));
       player.height = player.width;
-      bollard.width = Math.max(34, Math.floor(lanes.width * 0.36));
+      bollard.width = Math.max(34, Math.floor(lanes.width * 0.32));
       bollard.height = bollard.width;
-      player.speed = 820;
-      bollard.speed = 140; // faster mobile hazards
+      player.speed = 800;
+      bollard.speed = 120; // stable difficulty baseline
     } else {
       player.width = 100;
       player.height = 100;
