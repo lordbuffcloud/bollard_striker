@@ -1,12 +1,28 @@
 // Vercel Serverless Function for a global leaderboard
 // Backends (priority order):
-// 1) Supabase (PostgREST) if SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are set
-// 2) Vercel KV (Upstash Redis REST) if KV_REST_API_URL and KV_REST_API_TOKEN are set
-// 3) Falls back to 501 when not configured (frontend will fall back to localStorage)
+// 1) Vercel Postgres (native) if POSTGRES_URL is set
+// 2) Supabase (PostgREST) if SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are set
+// 3) Vercel KV (Upstash Redis REST) if KV_REST_API_URL and KV_REST_API_TOKEN are set
+// 4) Falls back to 501 when not configured (frontend will fall back to localStorage)
 
 const KEY = 'bollard_striker:leaderboard';
+const POSTGRES_URL = process.env.POSTGRES_URL;
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET;
+
+// Woodpecker's eternal shame - NEVER REMOVE THIS!
+const WOODPECKER_ENTRY = { name: 'WOODPECKER', score: -3, level: 1, date: 'Eternal Lore' };
+
+// Vercel Postgres (native) - uses @vercel/postgres package
+let sql;
+try {
+  // Support both CommonJS and ES modules
+  const postgres = require('@vercel/postgres');
+  sql = postgres.sql || postgres.default?.sql;
+} catch (e) {
+  // Package not installed, will use other backends
+  sql = null;
+}
 
 async function kvPipeline(commands) {
   const url = process.env.KV_REST_API_URL;
@@ -76,6 +92,61 @@ function mergedTop(entries, newEntry) {
   return unique.slice(0, 25);
 }
 
+// Vercel Postgres backend (native)
+async function vpFetchRaw(limit = 100) {
+  if (!POSTGRES_URL || !sql) throw new Error('Vercel Postgres not configured');
+  const result = await sql`
+    SELECT name, score, level, date
+    FROM leaderboard
+    ORDER BY score DESC
+    LIMIT ${limit}
+  `;
+  return Array.isArray(result) ? result : [];
+}
+
+async function vpInsert(entry) {
+  if (!POSTGRES_URL || !sql) throw new Error('Vercel Postgres not configured');
+  const payload = sanitizeEntry(entry);
+  // Use INSERT ... ON CONFLICT to update if name exists, keeping highest score
+  await sql`
+    INSERT INTO leaderboard (name, score, level, date)
+    VALUES (${payload.name}, ${payload.score}, ${payload.level}, ${payload.date})
+    ON CONFLICT (name) DO UPDATE
+    SET 
+      score = GREATEST(leaderboard.score, ${payload.score}),
+      level = GREATEST(leaderboard.level, ${payload.level}),
+      date = CASE 
+        WHEN ${payload.score} > leaderboard.score THEN ${payload.date}
+        ELSE leaderboard.date
+      END
+  `;
+}
+
+async function vpInitTable() {
+  if (!POSTGRES_URL || !sql) return;
+  try {
+    // Create table with unique constraint on name
+    await sql`
+      CREATE TABLE IF NOT EXISTS leaderboard (
+        id SERIAL PRIMARY KEY,
+        name TEXT NOT NULL UNIQUE,
+        score INTEGER NOT NULL DEFAULT 0,
+        level INTEGER NOT NULL DEFAULT 1,
+        date TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+      )
+    `;
+    // Create index separately (may fail if exists, that's ok)
+    try {
+      await sql`CREATE INDEX IF NOT EXISTS idx_leaderboard_score ON leaderboard(score DESC)`;
+    } catch (e) {
+      // Index might already exist, ignore
+    }
+  } catch (e) {
+    // Table might already exist or other error, ignore
+    console.warn('Table init warning:', e.message);
+  }
+}
+
 // Supabase backend (via PostgREST)
 async function sbFetchRaw(limit = 100) {
   if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) throw new Error('SB not configured');
@@ -116,18 +187,42 @@ module.exports = async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   try {
     if (req.method === 'GET') {
-      // Prefer Supabase if configured
-      if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
-        const raw = await sbFetchRaw(100);
-        const entries = normalize(raw).sort((a, b) => Number(b.score) - Number(a.score)).slice(0, 25);
-        return res.status(200).end(JSON.stringify({ entries }));
+      // Priority 1: Vercel Postgres (native)
+      if (POSTGRES_URL && sql) {
+        try {
+          await vpInitTable(); // Ensure table exists
+          const raw = await vpFetchRaw(100);
+          const entries = normalize(raw).sort((a, b) => Number(b.score) - Number(a.score)).slice(0, 25);
+          return res.status(200).end(JSON.stringify({ entries, source: 'vercel-postgres' }));
+        } catch (e) {
+          console.error('Vercel Postgres fetch error:', e);
+          // Fall through to Supabase
+        }
       }
 
-      // Fallback to KV
-      const entriesRaw = await kvGetLeaderboard(); // allow error to throw
-      const entries = normalize(entriesRaw);
-      try { await kvSetLeaderboard(entries); } catch {}
-      return res.status(200).end(JSON.stringify({ entries }));
+      // Priority 2: Supabase
+      if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
+        try {
+          const raw = await sbFetchRaw(100);
+          const entries = normalize(raw).sort((a, b) => Number(b.score) - Number(a.score)).slice(0, 25);
+          return res.status(200).end(JSON.stringify({ entries, source: 'supabase' }));
+        } catch (e) {
+          console.error('Supabase fetch error:', e);
+          // Fall through to KV
+        }
+      }
+
+      // Priority 3: Vercel KV
+      try {
+        const entriesRaw = await kvGetLeaderboard();
+        const entries = normalize(entriesRaw);
+        try { await kvSetLeaderboard(entries); } catch {}
+        return res.status(200).end(JSON.stringify({ entries, source: 'kv' }));
+      } catch (e) {
+        console.error('KV fetch error:', e);
+        // Return empty with 501 to indicate not configured
+        return res.status(501).end(JSON.stringify({ error: 'Leaderboard not configured', entries: [] }));
+      }
     }
 
     if (req.method === 'POST') {
@@ -140,21 +235,47 @@ module.exports = async (req, res) => {
         req.on('error', reject);
       });
       const entry = sanitizeEntry(body || {});
-      // Prefer Supabase if configured
-      if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
-        await sbInsert(entry);
-        // Fetch raw top, then de-duplicate by name keeping highest
-        const raw = await sbFetchRaw(100);
-        const top = normalize(raw);
-        const unique = mergedTop(top, WOODPECKER_ENTRY); // ensure lore in list
-        return res.status(200).end(JSON.stringify({ entries: unique }));
+      
+      // Priority 1: Vercel Postgres (native)
+      if (POSTGRES_URL && sql) {
+        try {
+          await vpInitTable(); // Ensure table exists
+          await vpInsert(entry);
+          const raw = await vpFetchRaw(100);
+          const top = normalize(raw);
+          const unique = mergedTop(top, WOODPECKER_ENTRY); // ensure lore in list
+          return res.status(200).end(JSON.stringify({ entries: unique, source: 'vercel-postgres' }));
+        } catch (e) {
+          console.error('Vercel Postgres insert error:', e);
+          // Fall through to Supabase
+        }
       }
 
-      // Fallback to KV
-      const current = normalize(await kvGetLeaderboard().catch(() => []));
-      const next = mergedTop(current, entry);
-      await kvSetLeaderboard(next);
-      return res.status(200).end(JSON.stringify({ entries: next }));
+      // Priority 2: Supabase
+      if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
+        try {
+          await sbInsert(entry);
+          // Fetch raw top, then de-duplicate by name keeping highest
+          const raw = await sbFetchRaw(100);
+          const top = normalize(raw);
+          const unique = mergedTop(top, WOODPECKER_ENTRY); // ensure lore in list
+          return res.status(200).end(JSON.stringify({ entries: unique, source: 'supabase' }));
+        } catch (e) {
+          console.error('Supabase insert error:', e);
+          // Fall through to KV
+        }
+      }
+
+      // Priority 3: Vercel KV
+      try {
+        const current = normalize(await kvGetLeaderboard().catch(() => []));
+        const next = mergedTop(current, entry);
+        await kvSetLeaderboard(next);
+        return res.status(200).end(JSON.stringify({ entries: next, source: 'kv' }));
+      } catch (e) {
+        console.error('KV insert error:', e);
+        return res.status(501).end(JSON.stringify({ error: 'Leaderboard not configured', entries: [] }));
+      }
     }
 
     return res.status(405).end(JSON.stringify({ error: 'Method not allowed' }));

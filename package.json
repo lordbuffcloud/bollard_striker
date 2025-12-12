@@ -1,0 +1,24 @@
+{
+  "name": "bollard-striker",
+  "version": "1.0.0",
+  "description": "Bollard Striker - A fun web game about avoiding bollards",
+  "engines": {
+    "node": ">=18.x"
+  },
+  "dependencies": {
+    "@vercel/postgres": "^0.5.1"
+  },
+  "scripts": {
+    "dev": "vercel dev",
+    "deploy": "vercel --prod"
+  },
+  "keywords": [
+    "game",
+    "bollard",
+    "vercel",
+    "leaderboard"
+  ],
+  "author": "SSgt King",
+  "license": "MIT"
+}
+

@@ -1,6 +1,16 @@
 {
   "cleanUrls": true,
   "trailingSlash": false,
+  "functions": {
+    "api/leaderboard.js": {
+      "memory": 1024,
+      "maxDuration": 10
+    },
+    "api/**/*.js": {
+      "memory": 512,
+      "maxDuration": 5
+    }
+  },
   "headers": [
     {
       "source": "/api/(.*)",
