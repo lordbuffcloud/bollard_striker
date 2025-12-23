@@ -52,6 +52,11 @@
   const TILT_PREF_KEY = 'bollard-striker-tilt-enabled';
   const TILT_SENS_PREF_KEY = 'bollard-striker-tilt-sensitivity';
   const REDUCED_MOTION_PREF_KEY = 'bollard-striker-reduced-motion';
+  const MASTER_VOLUME_KEY = 'bollard-striker-master-volume';
+  const MUSIC_VOLUME_KEY = 'bollard-striker-music-volume';
+  const SFX_VOLUME_KEY = 'bollard-striker-sfx-volume';
+  const STATS_KEY = 'bollard-striker-stats-v1';
+  const ACHIEVEMENTS_KEY = 'bollard-striker-achievements-v1';
   let soundEnabled = false;
   let vibrationEnabled = false;
   let musicEnabled = false;
@@ -59,6 +64,9 @@
   let tiltEnabled = false;
   let tiltSensitivity = 1.0;
   let tiltAxis = 0;
+  let masterVolume = 100;
+  let musicVolume = 60;
+  let sfxVolume = 100;
   let currentLevel = 1;
   let levelThreshold = 10; // retained for display compatibility
   let scoreMultiplier = 1; // retained for display compatibility
@@ -87,6 +95,12 @@
   let frameCount = 0;
   let fps = 60;
   let lastFinalScore = 0; // Store final score for leaderboard submission
+  let gameStartTime = 0; // Track game session time
+  let gamePowerUps = { total: 0, shields: 0, lasers: 0, speedBoosts: 0, multipliers: 0 }; // Track power-ups this game
+  let gameBollardsDodged = 0; // Track bollards dodged this game
+  let perfectRun = true; // Track if player took no damage
+  let maxMultiplier = 1; // Track max multiplier achieved
+  let scorePopUps = []; // For visual score pop-ups
 
   // Player
   const player = {
@@ -210,11 +224,19 @@
     leaderboard: document.getElementById('leaderboard'),
     gameOver: document.getElementById('gameOver'),
     tutorial: document.getElementById('tutorial'),
+    statistics: document.getElementById('statistics'),
+    achievements: document.getElementById('achievements'),
     lbList: document.getElementById('leaderboardList'),
+    statsContent: document.getElementById('statsContent'),
+    achievementsList: document.getElementById('achievementsList'),
     startBtn: document.getElementById('startBtn'),
     leaderboardBtn: document.getElementById('leaderboardBtn'),
+    statsBtn: document.getElementById('statsBtn'),
+    achievementsBtn: document.getElementById('achievementsBtn'),
     tutorialBtn: document.getElementById('tutorialBtn'),
     backFromLeaderboard: document.getElementById('backFromLeaderboard'),
+    backFromStats: document.getElementById('backFromStats'),
+    backFromAchievements: document.getElementById('backFromAchievements'),
     refreshLeaderboard: document.getElementById('refreshLeaderboard'),
     nameForm: document.getElementById('nameForm'),
     playerName: document.getElementById('playerName'),
@@ -238,6 +260,12 @@
     requestMotionPermission: document.getElementById('requestMotionPermission'),
     tiltSensitivity: document.getElementById('tiltSensitivity'),
     enableMusic: document.getElementById('enableMusic'),
+    masterVolume: document.getElementById('masterVolume'),
+    masterVolumeValue: document.getElementById('masterVolumeValue'),
+    musicVolume: document.getElementById('musicVolume'),
+    musicVolumeValue: document.getElementById('musicVolumeValue'),
+    sfxVolume: document.getElementById('sfxVolume'),
+    sfxVolumeValue: document.getElementById('sfxVolumeValue'),
     reducedMotion: document.getElementById('reducedMotion'),
     closeSettings: document.getElementById('closeSettings'),
   };
@@ -372,6 +400,264 @@
     }
   }
 
+  // Statistics tracking
+  function getStats() {
+    try {
+      const raw = localStorage.getItem(STATS_KEY);
+      if (!raw) return {
+        gamesPlayed: 0,
+        totalScore: 0,
+        bestScore: 0,
+        bestLevel: 1,
+        bestStreak: 0,
+        totalBollardsDodged: 0,
+        totalPlayTime: 0,
+        totalPowerUps: 0,
+        shieldsCollected: 0,
+        lasersCollected: 0,
+        speedBoostsCollected: 0,
+        multipliersCollected: 0
+      };
+      return JSON.parse(raw);
+    } catch {
+      return {
+        gamesPlayed: 0,
+        totalScore: 0,
+        bestScore: 0,
+        bestLevel: 1,
+        bestStreak: 0,
+        totalBollardsDodged: 0,
+        totalPlayTime: 0,
+        totalPowerUps: 0,
+        shieldsCollected: 0,
+        lasersCollected: 0,
+        speedBoostsCollected: 0,
+        multipliersCollected: 0
+      };
+    }
+  }
+  
+  function saveStats(stats) {
+    try {
+      localStorage.setItem(STATS_KEY, JSON.stringify(stats));
+    } catch {}
+  }
+  
+  function updateStats(finalScore, finalLevel, finalStreak, bollardsDodged, playTime, powerUps) {
+    const stats = getStats();
+    stats.gamesPlayed += 1;
+    stats.totalScore += finalScore;
+    stats.bestScore = Math.max(stats.bestScore, finalScore);
+    stats.bestLevel = Math.max(stats.bestLevel, finalLevel);
+    stats.bestStreak = Math.max(stats.bestStreak, finalStreak);
+    stats.totalBollardsDodged += bollardsDodged;
+    stats.totalPlayTime += playTime;
+    stats.totalPowerUps += powerUps.total;
+    stats.shieldsCollected += powerUps.shields;
+    stats.lasersCollected += powerUps.lasers;
+    stats.speedBoostsCollected += powerUps.speedBoosts;
+    stats.multipliersCollected += powerUps.multipliers;
+    saveStats(stats);
+    return stats;
+  }
+  
+  function renderStats() {
+    if (!el.statsContent) return;
+    const stats = getStats();
+    const avgScore = stats.gamesPlayed > 0 ? Math.floor(stats.totalScore / stats.gamesPlayed) : 0;
+    const playTimeMinutes = Math.floor(stats.totalPlayTime / 60);
+    const playTimeSeconds = Math.floor(stats.totalPlayTime % 60);
+    
+    el.statsContent.innerHTML = `
+      <div class="stats-grid">
+        <div class="stat-card">
+          <h3>Games</h3>
+          <p class="stat-value">${stats.gamesPlayed}</p>
+        </div>
+        <div class="stat-card">
+          <h3>Best Score</h3>
+          <p class="stat-value">${stats.bestScore}</p>
+        </div>
+        <div class="stat-card">
+          <h3>Best Level</h3>
+          <p class="stat-value">${stats.bestLevel}</p>
+        </div>
+        <div class="stat-card">
+          <h3>Best Streak</h3>
+          <p class="stat-value">${stats.bestStreak}</p>
+        </div>
+        <div class="stat-card">
+          <h3>Total Score</h3>
+          <p class="stat-value">${stats.totalScore.toLocaleString()}</p>
+        </div>
+        <div class="stat-card">
+          <h3>Average Score</h3>
+          <p class="stat-value">${avgScore}</p>
+        </div>
+        <div class="stat-card">
+          <h3>Bollards Dodged</h3>
+          <p class="stat-value">${stats.totalBollardsDodged.toLocaleString()}</p>
+        </div>
+        <div class="stat-card">
+          <h3>Play Time</h3>
+          <p class="stat-value">${playTimeMinutes}m ${playTimeSeconds}s</p>
+        </div>
+        <div class="stat-card">
+          <h3>Power-Ups Collected</h3>
+          <p class="stat-value">${stats.totalPowerUps}</p>
+        </div>
+        <div class="stat-card">
+          <h3>Shields</h3>
+          <p class="stat-value">${stats.shieldsCollected}</p>
+        </div>
+        <div class="stat-card">
+          <h3>Lasers</h3>
+          <p class="stat-value">${stats.lasersCollected}</p>
+        </div>
+        <div class="stat-card">
+          <h3>Speed Boosts</h3>
+          <p class="stat-value">${stats.speedBoostsCollected}</p>
+        </div>
+        <div class="stat-card">
+          <h3>Multipliers</h3>
+          <p class="stat-value">${stats.multipliersCollected}</p>
+        </div>
+      </div>
+    `;
+  }
+
+  // Achievements system
+  const ACHIEVEMENTS = [
+    { id: 'first_strike', name: 'First Strike', desc: 'Hit your first bollard', icon: '🏆', unlocked: false },
+    { id: 'on_fire', name: 'On Fire', desc: 'Reach a streak of 50', icon: '🔥', unlocked: false },
+    { id: 'protected', name: 'Protected', desc: 'Collect 10 shields', icon: '🛡️', unlocked: false },
+    { id: 'laser_master', name: 'Laser Master', desc: 'Destroy 50 bollards with laser', icon: '💥', unlocked: false },
+    { id: 'perfect_run', name: 'Perfect Run', desc: 'Complete a game without taking damage', icon: '🎯', unlocked: false },
+    { id: 'level_up', name: 'Level Up', desc: 'Reach level 10', icon: '📈', unlocked: false },
+    { id: 'speed_demon', name: 'Speed Demon', desc: 'Use speed boost 5 times', icon: '⚡', unlocked: false },
+    { id: 'multiplier_master', name: 'Multiplier Master', desc: 'Get 5x score multiplier', icon: '🌟', unlocked: false },
+    { id: 'survivor', name: 'Survivor', desc: 'Dodge 100 bollards in one game', icon: '💪', unlocked: false },
+    { id: 'veteran', name: 'Veteran', desc: 'Play 50 games', icon: '🎖️', unlocked: false }
+  ];
+  
+  function getAchievements() {
+    try {
+      const raw = localStorage.getItem(ACHIEVEMENTS_KEY);
+      if (!raw) return ACHIEVEMENTS.map(a => ({ ...a }));
+      const saved = JSON.parse(raw);
+      return ACHIEVEMENTS.map(ach => {
+        const savedAch = saved.find(s => s.id === ach.id);
+        return savedAch ? { ...ach, unlocked: savedAch.unlocked } : { ...ach };
+      });
+    } catch {
+      return ACHIEVEMENTS.map(a => ({ ...a }));
+    }
+  }
+  
+  function saveAchievements(achievements) {
+    try {
+      localStorage.setItem(ACHIEVEMENTS_KEY, JSON.stringify(achievements));
+    } catch {}
+  }
+  
+  function checkAchievements(stats, gameStats) {
+    const achievements = getAchievements();
+    let newUnlocks = [];
+    
+    achievements.forEach(ach => {
+      if (ach.unlocked) return;
+      
+      let unlocked = false;
+      switch (ach.id) {
+        case 'first_strike':
+          unlocked = stats.gamesPlayed > 0;
+          break;
+        case 'on_fire':
+          unlocked = gameStats.bestStreak >= 50;
+          break;
+        case 'protected':
+          unlocked = stats.shieldsCollected >= 10;
+          break;
+        case 'laser_master':
+          unlocked = stats.lasersCollected >= 5; // Adjusted for balance
+          break;
+        case 'perfect_run':
+          unlocked = gameStats.perfectRun || false;
+          break;
+        case 'level_up':
+          unlocked = gameStats.finalLevel >= 10;
+          break;
+        case 'speed_demon':
+          unlocked = stats.speedBoostsCollected >= 5;
+          break;
+        case 'multiplier_master':
+          unlocked = gameStats.maxMultiplier >= 5;
+          break;
+        case 'survivor':
+          unlocked = gameStats.bollardsDodged >= 100;
+          break;
+        case 'veteran':
+          unlocked = stats.gamesPlayed >= 50;
+          break;
+      }
+      
+      if (unlocked) {
+        ach.unlocked = true;
+        newUnlocks.push(ach);
+      }
+    });
+    
+    if (newUnlocks.length > 0) {
+      saveAchievements(achievements);
+      showAchievementUnlock(newUnlocks[0]);
+    }
+    
+    return achievements;
+  }
+  
+  function showAchievementUnlock(achievement) {
+    const notification = document.createElement('div');
+    notification.className = 'achievement-notification';
+    notification.innerHTML = `
+      <div class="achievement-notification-content">
+        <span class="achievement-icon">${achievement.icon}</span>
+        <div>
+          <h4>Achievement Unlocked!</h4>
+          <p>${achievement.name}</p>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(notification);
+    
+    setTimeout(() => notification.classList.add('show'), 10);
+    setTimeout(() => {
+      notification.classList.remove('show');
+      setTimeout(() => notification.remove(), 300);
+    }, 3000);
+  }
+  
+  function renderAchievements() {
+    if (!el.achievementsList) return;
+    const achievements = getAchievements();
+    const unlockedCount = achievements.filter(a => a.unlocked).length;
+    
+    el.achievementsList.innerHTML = `
+      <p style="text-align: center; margin-bottom: 16px; color: #888;">
+        ${unlockedCount} / ${achievements.length} Unlocked
+      </p>
+      <div class="achievements-grid">
+        ${achievements.map(ach => `
+          <div class="achievement-card ${ach.unlocked ? 'unlocked' : 'locked'}">
+            <div class="achievement-icon-large">${ach.unlocked ? ach.icon : '🔒'}</div>
+            <h3>${ach.name}</h3>
+            <p>${ach.desc}</p>
+            ${ach.unlocked ? '<span class="achievement-badge">Unlocked</span>' : ''}
+          </div>
+        `).join('')}
+      </div>
+    `;
+  }
+
   // Preference init
   try {
     const prefSound = localStorage.getItem(SOUND_PREF_KEY);
@@ -385,12 +671,19 @@
   try { const v = localStorage.getItem(REDUCED_MOTION_PREF_KEY); if (v != null) reducedMotion = v === '1'; } catch {}
   try { const v = localStorage.getItem(TILT_PREF_KEY); if (v != null) tiltEnabled = v === '1'; else tiltEnabled = isCoarsePointer(); } catch { tiltEnabled = isCoarsePointer(); }
   try { const v = localStorage.getItem(TILT_SENS_PREF_KEY); if (v != null) { const n = Number(v); if (Number.isFinite(n)) tiltSensitivity = Math.max(0.2, Math.min(3, n)); } } catch {}
+  try { const v = localStorage.getItem(MASTER_VOLUME_KEY); if (v != null) { const n = Number(v); if (Number.isFinite(n)) masterVolume = Math.max(0, Math.min(100, n)); } } catch {}
+  try { const v = localStorage.getItem(MUSIC_VOLUME_KEY); if (v != null) { const n = Number(v); if (Number.isFinite(n)) musicVolume = Math.max(0, Math.min(100, n)); } } catch {}
+  try { const v = localStorage.getItem(SFX_VOLUME_KEY); if (v != null) { const n = Number(v); if (Number.isFinite(n)) sfxVolume = Math.max(0, Math.min(100, n)); } } catch {}
+  updateAudioVolumes();
   if (el.soundToggle) el.soundToggle.textContent = `Sound: ${soundEnabled ? 'On' : 'Off'}`;
   if (el.vibrationToggle) el.vibrationToggle.textContent = `Vibrate: ${vibrationEnabled ? 'On' : 'Off'}`;
   if (el.enableMusic) el.enableMusic.checked = musicEnabled;
   if (el.enableTilt) el.enableTilt.checked = tiltEnabled;
   if (el.tiltSensitivity) el.tiltSensitivity.value = String(tiltSensitivity);
   if (el.reducedMotion) el.reducedMotion.checked = reducedMotion;
+  if (el.masterVolume) { el.masterVolume.value = String(masterVolume); el.masterVolumeValue.textContent = `${masterVolume}%`; }
+  if (el.musicVolume) { el.musicVolume.value = String(musicVolume); el.musicVolumeValue.textContent = `${musicVolume}%`; }
+  if (el.sfxVolume) { el.sfxVolume.value = String(sfxVolume); el.sfxVolumeValue.textContent = `${sfxVolume}%`; }
 
   // DPR-aware canvas sizing (accounts for mobile browser UI + header/footer)
   function resizeCanvas() {
@@ -495,6 +788,13 @@
     currentLevel = Math.max(1, Math.floor(score / 8) + 1);
     scoreMultiplier = 1 + Math.min(2.0, streak * 0.03); // better bonus from streaks
   }
+  function updateAudioVolumes() {
+    const masterVol = masterVolume / 100;
+    bgm.volume = (musicVolume / 100) * masterVol;
+    sfx.collision.volume = (sfxVolume / 100) * masterVol;
+    sfx.click.volume = (sfxVolume / 100) * masterVol;
+  }
+  
   function playClick() {
     if (!soundEnabled) return;
     try { 
@@ -550,6 +850,11 @@
     streak = 0;
     bestStreak = 0;
     lastFinalScore = 0;
+    gameStartTime = performance.now() / 1000;
+    gamePowerUps = { total: 0, shields: 0, lasers: 0, speedBoosts: 0, multipliers: 0 };
+    gameBollardsDodged = 0;
+    perfectRun = true;
+    maxMultiplier = 1;
     shield.active = false;
     shield.visible = false;
     laserPU.active = false;
@@ -560,6 +865,7 @@
     scoreMultiplierPU.visible = false;
     particles.length = 0;
     lasers.length = 0;
+    scorePopUps.length = 0;
     screenShake.intensity = 0;
     screenShake.x = 0; // Explicitly reset screen shake position
     screenShake.y = 0;
@@ -574,10 +880,14 @@
   }
 
   function showOverlay(which) {
-    for (const k of ['landing', 'leaderboard', 'gameOver', 'settings', 'tutorial']) {
-      el[k].classList.remove('visible');
+    for (const k of ['landing', 'leaderboard', 'gameOver', 'settings', 'tutorial', 'statistics', 'achievements']) {
+      if (el[k]) el[k].classList.remove('visible');
     }
-    if (which) el[which].classList.add('visible');
+    if (which && el[which]) {
+      el[which].classList.add('visible');
+      if (which === 'statistics') renderStats();
+      if (which === 'achievements') renderAchievements();
+    }
   }
 
   function showCountdownOverlay(show) {
@@ -717,10 +1027,19 @@
         // scoring with combo and active multipliers
         streak += 1;
         bestStreak = Math.max(bestStreak, streak);
+        gameBollardsDodged += 1;
         const comboBonus = 1 + Math.min(12, Math.floor(streak / 5)); // Slightly gentler scaling for mobile fairness
         const baseScore = comboBonus * activeScoreMultiplier;
         score += baseScore;
         dodgeSinceLastLaser += 1;
+        // Add score pop-up
+        scorePopUps.push({
+          x: b.x + bollard.width / 2,
+          y: b.y + bollard.height / 2,
+          value: `+${baseScore}`,
+          life: 1.0,
+          vy: -50
+        });
         // On mobile, gradually increase bollard count for more challenge
         if (isCoarsePointer()) {
           const desired = score >= 8 ? 2 : 1;
@@ -784,6 +1103,7 @@
           }
         } else {
           health -= 1;
+          perfectRun = false; // Player took damage
           streak = 0;
           invulnerableFor = isCoarsePointer() ? 1.2 : 1.0; // slightly shorter to restore challenge
           // Screen shake on damage
@@ -818,6 +1138,8 @@
         pb.x, pb.y, pb.w, pb.h)) {
         shield.visible = false;
         shield.active = true;
+        gamePowerUps.total++;
+        gamePowerUps.shields++;
         playClick();
       }
       if (shield.y - shield.size / 2 > screen.height) {
@@ -834,6 +1156,8 @@
         laserPU.visible = false;
         laserPU.active = true;
         laserPU.timeLeft = isCoarsePointer() ? 6.0 : 5.0; // Slightly longer on mobile
+        gamePowerUps.total++;
+        gamePowerUps.lasers++;
         playClick();
       }
       if (laserPU.y - laserPU.size / 2 > screen.height) laserPU.visible = false;
@@ -854,6 +1178,8 @@
         speedBoost.visible = false;
         speedBoost.active = true;
         speedBoost.timeLeft = isCoarsePointer() ? 8.0 : 7.0;
+        gamePowerUps.total++;
+        gamePowerUps.speedBoosts++;
         playClick();
       }
       if (speedBoost.y - speedBoost.size / 2 > screen.height) speedBoost.visible = false;
@@ -876,6 +1202,8 @@
         scoreMultiplierPU.visible = false;
         scoreMultiplierPU.active = true;
         scoreMultiplierPU.timeLeft = isCoarsePointer() ? 10.0 : 8.0;
+        gamePowerUps.total++;
+        gamePowerUps.multipliers++;
         playClick();
       }
       if (scoreMultiplierPU.y - scoreMultiplierPU.size / 2 > screen.height) scoreMultiplierPU.visible = false;
@@ -889,6 +1217,7 @@
         activeScoreMultiplier = 1;
       } else {
         activeScoreMultiplier = scoreMultiplierPU.multiplier;
+        maxMultiplier = Math.max(maxMultiplier, activeScoreMultiplier);
       }
     } else {
       activeScoreMultiplier = 1;
@@ -903,6 +1232,16 @@
       if (p.life <= 0) {
         releaseParticle(particles[i]);
         particles.splice(i, 1);
+      }
+    }
+    
+    // Update score pop-ups
+    for (let i = scorePopUps.length - 1; i >= 0; i--) {
+      const pop = scorePopUps[i];
+      pop.y += pop.vy * dt;
+      pop.life -= dt * 0.8;
+      if (pop.life <= 0) {
+        scorePopUps.splice(i, 1);
       }
     }
 
@@ -944,6 +1283,21 @@
       running = false;
       const finalScore = Math.floor(score * scoreMultiplier * activeScoreMultiplier);
       lastFinalScore = finalScore; // Store for leaderboard submission
+      const playTime = performance.now() / 1000 - gameStartTime;
+      
+      // Update statistics
+      const stats = updateStats(finalScore, currentLevel, bestStreak, gameBollardsDodged, playTime, gamePowerUps);
+      
+      // Check achievements
+      checkAchievements(stats, {
+        finalScore,
+        finalLevel: currentLevel,
+        bestStreak,
+        bollardsDodged: gameBollardsDodged,
+        perfectRun,
+        maxMultiplier
+      });
+      
       el.finalScore.textContent = `Your Final Score: ${finalScore} (Best Streak: ${bestStreak})`;
       el.finalLevel.textContent = `You Reached Level: ${currentLevel}`;
       showOverlay('gameOver');
@@ -1195,6 +1549,25 @@
       }
       ctx.restore();
     }
+    
+    // Draw score pop-ups
+    if (scorePopUps.length > 0) {
+      ctx.save();
+      for (const pop of scorePopUps) {
+        const alpha = Math.max(0, pop.life);
+        if (alpha <= 0) continue;
+        ctx.globalAlpha = alpha;
+        const scale = 0.8 + (1 - pop.life) * 0.2;
+        ctx.font = `bold ${Math.floor(20 * scale)}px Arial`;
+        ctx.fillStyle = streak > 20 ? COLORS.NEON_GREEN : streak > 10 ? COLORS.CAUTION_YELLOW : COLORS.ELECTRIC_ORANGE;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.shadowColor = 'rgba(0,0,0,0.8)';
+        ctx.shadowBlur = 4;
+        ctx.fillText(pop.value, pop.x, pop.y);
+      }
+      ctx.restore();
+    }
     ctx.globalAlpha = 1.0;
     
     ctx.restore(); // Restore from screen shake transform
@@ -1408,6 +1781,32 @@
     renderLeaderboard();
     showOverlay('leaderboard');
   });
+  if (el.statsBtn) {
+    el.statsBtn.addEventListener('click', () => {
+      playClick();
+      renderStats();
+      showOverlay('statistics');
+    });
+  }
+  if (el.achievementsBtn) {
+    el.achievementsBtn.addEventListener('click', () => {
+      playClick();
+      renderAchievements();
+      showOverlay('achievements');
+    });
+  }
+  if (el.backFromStats) {
+    el.backFromStats.addEventListener('click', () => {
+      playClick();
+      showOverlay('landing');
+    });
+  }
+  if (el.backFromAchievements) {
+    el.backFromAchievements.addEventListener('click', () => {
+      playClick();
+      showOverlay('landing');
+    });
+  }
   if (el.tutorialBtn) {
     el.tutorialBtn.addEventListener('click', () => {
       playClick();
@@ -1537,6 +1936,39 @@
       if (Number.isFinite(n)) {
         tiltSensitivity = Math.max(0.2, Math.min(3, n));
         try { localStorage.setItem(TILT_SENS_PREF_KEY, String(tiltSensitivity)); } catch {}
+      }
+    });
+  }
+  if (el.masterVolume) {
+    el.masterVolume.addEventListener('input', () => {
+      const n = Number(el.masterVolume.value);
+      if (Number.isFinite(n)) {
+        masterVolume = Math.max(0, Math.min(100, n));
+        if (el.masterVolumeValue) el.masterVolumeValue.textContent = `${masterVolume}%`;
+        updateAudioVolumes();
+        try { localStorage.setItem(MASTER_VOLUME_KEY, String(masterVolume)); } catch {}
+      }
+    });
+  }
+  if (el.musicVolume) {
+    el.musicVolume.addEventListener('input', () => {
+      const n = Number(el.musicVolume.value);
+      if (Number.isFinite(n)) {
+        musicVolume = Math.max(0, Math.min(100, n));
+        if (el.musicVolumeValue) el.musicVolumeValue.textContent = `${musicVolume}%`;
+        updateAudioVolumes();
+        try { localStorage.setItem(MUSIC_VOLUME_KEY, String(musicVolume)); } catch {}
+      }
+    });
+  }
+  if (el.sfxVolume) {
+    el.sfxVolume.addEventListener('input', () => {
+      const n = Number(el.sfxVolume.value);
+      if (Number.isFinite(n)) {
+        sfxVolume = Math.max(0, Math.min(100, n));
+        if (el.sfxVolumeValue) el.sfxVolumeValue.textContent = `${sfxVolume}%`;
+        updateAudioVolumes();
+        try { localStorage.setItem(SFX_VOLUME_KEY, String(sfxVolume)); } catch {}
       }
     });
   }

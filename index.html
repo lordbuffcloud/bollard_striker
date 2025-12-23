@@ -47,6 +47,8 @@
         <div class="cta-row">
           <button id="startBtn" class="btn primary">Start</button>
           <button id="leaderboardBtn" class="btn">View Leaderboard</button>
+          <button id="statsBtn" class="btn">Statistics</button>
+          <button id="achievementsBtn" class="btn">Achievements</button>
           <button id="tutorialBtn" class="btn">How to Play</button>
         </div>
         <p class="credit">Created by SSgt King</p>
@@ -69,6 +71,24 @@
         </div>
       </section>
 
+      <!-- Statistics overlay -->
+      <section id="statistics" class="overlay">
+        <h2>Statistics</h2>
+        <div id="statsContent" class="stats-content"></div>
+        <div class="cta-row">
+          <button id="backFromStats" class="btn">Back</button>
+        </div>
+      </section>
+
+      <!-- Achievements overlay -->
+      <section id="achievements" class="overlay">
+        <h2>Achievements</h2>
+        <div id="achievementsList" class="achievements-list"></div>
+        <div class="cta-row">
+          <button id="backFromAchievements" class="btn">Back</button>
+        </div>
+      </section>
+
       <!-- Settings overlay -->
       <section id="settings" class="overlay sheet">
         <h2>Settings</h2>
@@ -83,6 +103,21 @@
           </div>
           <div class="field row">
             <label class="row"><input type="checkbox" id="enableMusic" /> <span>Background Music</span></label>
+          </div>
+          <div class="field">
+            <label for="masterVolume">Master Volume</label>
+            <input type="range" id="masterVolume" min="0" max="100" step="5" value="100" />
+            <span id="masterVolumeValue">100%</span>
+          </div>
+          <div class="field">
+            <label for="musicVolume">Music Volume</label>
+            <input type="range" id="musicVolume" min="0" max="100" step="5" value="60" />
+            <span id="musicVolumeValue">60%</span>
+          </div>
+          <div class="field">
+            <label for="sfxVolume">Sound Effects Volume</label>
+            <input type="range" id="sfxVolume" min="0" max="100" step="5" value="100" />
+            <span id="sfxVolumeValue">100%</span>
           </div>
           <div class="field row">
             <label class="row"><input type="checkbox" id="reducedMotion" /> <span>Reduced Motion</span></label>
