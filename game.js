@@ -992,8 +992,15 @@
   }
 
   function update(dt) {
-    if (!running) return;
-    if (paused) return;
+    if (!running) {
+      // Clear visual effects when game is not running
+      scorePopUps.length = 0;
+      return;
+    }
+    if (paused) {
+      // Don't update visuals when paused, but keep them for when we resume
+      return;
+    }
 
     // timers
     if (invulnerableFor > 0) invulnerableFor = Math.max(0, invulnerableFor - dt);
@@ -1129,8 +1136,8 @@
       }
     }
 
-    // Power-up movement and pickup
-    if (shield.visible) {
+    // Power-up movement and pickup (only when game is running and not paused)
+    if (shield.visible && running && !paused) {
       shield.y += (reducedMotion ? shield.vy * 0.8 : shield.vy) * dt;
       // pickup check (simple AABB with slightly reduced player box)
       const pb = scaledRect(player.x, player.y, player.width, player.height, 0.9);
@@ -1148,7 +1155,7 @@
     }
 
     // Laser power-up movement and pickup
-    if (laserPU.visible) {
+    if (laserPU.visible && running && !paused) {
       laserPU.y += laserPU.vy * dt;
       const pb2 = scaledRect(player.x, player.y, player.width, player.height, 0.9);
       if (rectsOverlap(laserPU.x - laserPU.size / 2, laserPU.y - laserPU.size / 2, laserPU.size, laserPU.size,
@@ -1170,7 +1177,7 @@
     }
 
     // Speed boost power-up movement and pickup
-    if (speedBoost.visible) {
+    if (speedBoost.visible && running && !paused) {
       speedBoost.y += speedBoost.vy * dt;
       const pb3 = scaledRect(player.x, player.y, player.width, player.height, 0.9);
       if (rectsOverlap(speedBoost.x - speedBoost.size / 2, speedBoost.y - speedBoost.size / 2, speedBoost.size, speedBoost.size,
@@ -1194,7 +1201,7 @@
     }
 
     // Score multiplier power-up movement and pickup
-    if (scoreMultiplierPU.visible) {
+    if (scoreMultiplierPU.visible && running && !paused) {
       scoreMultiplierPU.y += scoreMultiplierPU.vy * dt;
       const pb4 = scaledRect(player.x, player.y, player.width, player.height, 0.9);
       if (rectsOverlap(scoreMultiplierPU.x - scoreMultiplierPU.size / 2, scoreMultiplierPU.y - scoreMultiplierPU.size / 2, scoreMultiplierPU.size, scoreMultiplierPU.size,
@@ -1285,6 +1292,13 @@
       lastFinalScore = finalScore; // Store for leaderboard submission
       const playTime = performance.now() / 1000 - gameStartTime;
       
+      // Clear all visual effects when game ends
+      scorePopUps.length = 0;
+      shield.visible = false;
+      laserPU.visible = false;
+      speedBoost.visible = false;
+      scoreMultiplierPU.visible = false;
+      
       // Update statistics
       const stats = updateStats(finalScore, currentLevel, bestStreak, gameBollardsDodged, playTime, gamePowerUps);
       
@@ -1305,6 +1319,19 @@
   }
 
   function draw() {
+    // Always clear the entire canvas first to prevent stuck visuals
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.fillStyle = COLORS.PRIMARY_BACKGROUND;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.restore();
+    
+    // Only draw game elements if game is running
+    if (!running) {
+      drawHUD();
+      return;
+    }
+    
     ctx.save();
     // Apply screen shake (only if intensity > 0)
     if (screenShake.intensity > 0) {
@@ -1351,8 +1378,8 @@
       }
     }
 
-    // Shield power-up rendering
-    if (shield.visible) {
+    // Shield power-up rendering (only when game is running)
+    if (running && shield.visible) {
       ctx.save();
       ctx.translate(shield.x, shield.y);
       // glow
@@ -1371,8 +1398,8 @@
       ctx.restore();
     }
 
-    // Laser power-up rendering (pickup icon)
-    if (laserPU.visible) {
+    // Laser power-up rendering (pickup icon) (only when game is running)
+    if (running && laserPU.visible) {
       ctx.save();
       ctx.translate(laserPU.x, laserPU.y);
       const gradient2 = ctx.createRadialGradient(0, 0, 2, 0, 0, laserPU.size);
@@ -1393,8 +1420,8 @@
       ctx.restore();
     }
 
-    // Speed boost power-up rendering
-    if (speedBoost.visible) {
+    // Speed boost power-up rendering (only when game is running)
+    if (running && speedBoost.visible) {
       ctx.save();
       ctx.translate(speedBoost.x, speedBoost.y);
       const gradient3 = ctx.createRadialGradient(0, 0, 2, 0, 0, speedBoost.size);
@@ -1412,8 +1439,8 @@
       ctx.restore();
     }
 
-    // Score multiplier power-up rendering
-    if (scoreMultiplierPU.visible) {
+    // Score multiplier power-up rendering (only when game is running)
+    if (running && scoreMultiplierPU.visible) {
       ctx.save();
       ctx.translate(scoreMultiplierPU.x, scoreMultiplierPU.y);
       const gradient4 = ctx.createRadialGradient(0, 0, 2, 0, 0, scoreMultiplierPU.size);
@@ -1431,8 +1458,8 @@
       ctx.restore();
     }
 
-    // Active lasers firing effect
-    if (laserPU.active) {
+    // Active lasers firing effect (only when game is running)
+    if (running && laserPU.active) {
       const fireInterval = 0.24; // slightly slower beams for balance
       laserPU._acc = (laserPU._acc || 0) + dt;
       if (laserPU._acc >= fireInterval) {
@@ -1453,8 +1480,8 @@
       ctx.restore();
     }
 
-    // Draw active lasers (optimized batch rendering)
-    if (lasers.length > 0) {
+    // Draw active lasers (optimized batch rendering) (only when game is running)
+    if (running && lasers.length > 0) {
       ctx.save();
       ctx.strokeStyle = '#39ff14';
       ctx.lineWidth = 4;
@@ -1469,8 +1496,8 @@
       ctx.restore();
     }
 
-    // Active speed boost visual effect
-    if (speedBoost.active) {
+    // Active speed boost visual effect (only when game is running)
+    if (running && speedBoost.active) {
       ctx.save();
       const pulse = 1 + 0.15 * Math.sin(performance.now() / 100);
       ctx.strokeStyle = COLORS.ELECTRIC_ORANGE;
@@ -1490,8 +1517,8 @@
       ctx.restore();
     }
 
-    // Active score multiplier visual effect
-    if (scoreMultiplierPU.active) {
+    // Active score multiplier visual effect (only when game is running)
+    if (running && scoreMultiplierPU.active) {
       ctx.save();
       const pulse = 1 + 0.12 * Math.sin(performance.now() / 150);
       ctx.strokeStyle = COLORS.CAUTION_YELLOW;
@@ -1513,8 +1540,8 @@
       ctx.restore();
     }
 
-    // Active shield ring around player
-    if (shield.active) {
+    // Active shield ring around player (only when game is running)
+    if (running && shield.active) {
       ctx.save();
       const pulse = 1 + 0.1 * Math.sin(performance.now() / 120);
       ctx.strokeStyle = COLORS.BOLT_BLUE;
@@ -1550,8 +1577,8 @@
       ctx.restore();
     }
     
-    // Draw score pop-ups
-    if (scorePopUps.length > 0) {
+    // Draw score pop-ups (only when game is running)
+    if (running && scorePopUps.length > 0) {
       ctx.save();
       for (const pop of scorePopUps) {
         const alpha = Math.max(0, pop.life);
