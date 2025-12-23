@@ -236,6 +236,7 @@
     tutorialBtn: document.getElementById('tutorialBtn'),
     backFromLeaderboard: document.getElementById('backFromLeaderboard'),
     backFromStats: document.getElementById('backFromStats'),
+    resetStatsBtn: document.getElementById('resetStatsBtn'),
     backFromAchievements: document.getElementById('backFromAchievements'),
     refreshLeaderboard: document.getElementById('refreshLeaderboard'),
     nameForm: document.getElementById('nameForm'),
@@ -531,13 +532,17 @@
     { id: 'first_strike', name: 'First Strike', desc: 'Hit your first bollard', icon: '🏆', unlocked: false },
     { id: 'on_fire', name: 'On Fire', desc: 'Reach a streak of 50', icon: '🔥', unlocked: false },
     { id: 'protected', name: 'Protected', desc: 'Collect 10 shields', icon: '🛡️', unlocked: false },
-    { id: 'laser_master', name: 'Laser Master', desc: 'Destroy 50 bollards with laser', icon: '💥', unlocked: false },
+    { id: 'laser_master', name: 'Laser Master', desc: 'Collect 5 lasers', icon: '💥', unlocked: false },
     { id: 'perfect_run', name: 'Perfect Run', desc: 'Complete a game without taking damage', icon: '🎯', unlocked: false },
     { id: 'level_up', name: 'Level Up', desc: 'Reach level 10', icon: '📈', unlocked: false },
     { id: 'speed_demon', name: 'Speed Demon', desc: 'Use speed boost 5 times', icon: '⚡', unlocked: false },
     { id: 'multiplier_master', name: 'Multiplier Master', desc: 'Get 5x score multiplier', icon: '🌟', unlocked: false },
     { id: 'survivor', name: 'Survivor', desc: 'Dodge 100 bollards in one game', icon: '💪', unlocked: false },
-    { id: 'veteran', name: 'Veteran', desc: 'Play 50 games', icon: '🎖️', unlocked: false }
+    { id: 'veteran', name: 'Veteran', desc: 'Play 50 games', icon: '🎖️', unlocked: false },
+    { id: 'centurion', name: 'Centurion', desc: 'Reach a streak of 100', icon: '👑', unlocked: false },
+    { id: 'collector', name: 'Collector', desc: 'Collect 50 power-ups total', icon: '📦', unlocked: false },
+    { id: 'high_score', name: 'High Score', desc: 'Score over 500 points', icon: '⭐', unlocked: false },
+    { id: 'marathon', name: 'Marathon', desc: 'Play for over 5 minutes total', icon: '🏃', unlocked: false }
   ];
   
   function getAchievements() {
@@ -598,6 +603,18 @@
           break;
         case 'veteran':
           unlocked = stats.gamesPlayed >= 50;
+          break;
+        case 'centurion':
+          unlocked = gameStats.bestStreak >= 100;
+          break;
+        case 'collector':
+          unlocked = stats.totalPowerUps >= 50;
+          break;
+        case 'high_score':
+          unlocked = gameStats.finalScore >= 500;
+          break;
+        case 'marathon':
+          unlocked = stats.totalPlayTime >= 300; // 5 minutes
           break;
       }
       
@@ -850,7 +867,7 @@
     streak = 0;
     bestStreak = 0;
     lastFinalScore = 0;
-    gameStartTime = performance.now() / 1000;
+    // gameStartTime will be set when game actually starts (after countdown)
     gamePowerUps = { total: 0, shields: 0, lasers: 0, speedBoosts: 0, multipliers: 0 };
     gameBollardsDodged = 0;
     perfectRun = true;
@@ -914,6 +931,8 @@
       await new Promise((r) => setTimeout(r, i < 3 ? 550 : 350));
     }
     showCountdownOverlay(false);
+    // Set game start time when game actually starts (after countdown)
+    gameStartTime = performance.now() / 1000;
     if (musicEnabled || isCoarsePointer()) {
       try { bgm.currentTime = 0; bgm.volume = 0.6; await bgm.play(); bgmUnlocked = true; } catch {}
     } else {
@@ -928,6 +947,14 @@
     ctx.textBaseline = 'top';
     const finalScore = Math.floor(score * scoreMultiplier * activeScoreMultiplier);
     ctx.fillText(`Score: ${finalScore}`, 10, 10);
+    
+    // Show combo multiplier if active
+    if (activeScoreMultiplier > 1) {
+      ctx.fillStyle = COLORS.CAUTION_YELLOW;
+      ctx.font = 'bold 18px Arial';
+      ctx.fillText(`${activeScoreMultiplier}x`, 10, 35);
+      ctx.font = 'bold 22px Arial';
+    }
     
     // Health with color coding and warning
     ctx.fillStyle = health <= 1 ? COLORS.DEEP_RED : (health <= 2 ? COLORS.CAUTION_YELLOW : COLORS.NEON_GREEN);
@@ -1039,13 +1066,14 @@
         const baseScore = comboBonus * activeScoreMultiplier;
         score += baseScore;
         dodgeSinceLastLaser += 1;
-        // Add score pop-up
+        // Add score pop-up with combo indicator for high streaks
+        const comboText = streak >= 20 ? ' 🔥' : streak >= 10 ? ' ⚡' : '';
         scorePopUps.push({
           x: b.x + bollard.width / 2,
           y: b.y + bollard.height / 2,
-          value: `+${baseScore}`,
-          life: 1.0,
-          vy: -50
+          value: `+${baseScore}${comboText}`,
+          life: 1.2,
+          vy: -60
         });
         // On mobile, gradually increase bollard count for more challenge
         if (isCoarsePointer()) {
@@ -1290,7 +1318,8 @@
       running = false;
       const finalScore = Math.floor(score * scoreMultiplier * activeScoreMultiplier);
       lastFinalScore = finalScore; // Store for leaderboard submission
-      const playTime = performance.now() / 1000 - gameStartTime;
+      // Calculate play time (ensure it's not negative)
+      const playTime = gameStartTime > 0 ? Math.max(0, performance.now() / 1000 - gameStartTime) : 0;
       
       // Clear all visual effects when game ends
       scorePopUps.length = 0;
@@ -1299,18 +1328,20 @@
       speedBoost.visible = false;
       scoreMultiplierPU.visible = false;
       
-      // Update statistics
-      const stats = updateStats(finalScore, currentLevel, bestStreak, gameBollardsDodged, playTime, gamePowerUps);
-      
-      // Check achievements
-      checkAchievements(stats, {
-        finalScore,
-        finalLevel: currentLevel,
-        bestStreak,
-        bollardsDodged: gameBollardsDodged,
-        perfectRun,
-        maxMultiplier
-      });
+      // Update statistics (only if game actually ran)
+      if (gameStartTime > 0) {
+        const stats = updateStats(finalScore, currentLevel, bestStreak, gameBollardsDodged, playTime, gamePowerUps);
+        
+        // Check achievements
+        checkAchievements(stats, {
+          finalScore,
+          finalLevel: currentLevel,
+          bestStreak,
+          bollardsDodged: gameBollardsDodged,
+          perfectRun,
+          maxMultiplier
+        });
+      }
       
       el.finalScore.textContent = `Your Final Score: ${finalScore} (Best Streak: ${bestStreak})`;
       el.finalLevel.textContent = `You Reached Level: ${currentLevel}`;
@@ -1359,9 +1390,20 @@
     }
     ctx.restore();
 
-    // Player (flicker when invulnerable)
+    // Player (flicker when invulnerable, with trail effect for speed boost)
     const flicker = invulnerableFor > 0 && Math.floor(performance.now() / 100) % 2 === 0;
     if (!flicker) {
+      // Draw trail effect when speed boost is active
+      if (speedBoost.active && !reducedMotion) {
+        ctx.save();
+        ctx.globalAlpha = 0.3;
+        ctx.fillStyle = COLORS.ELECTRIC_ORANGE;
+        ctx.fillRect(player.x - 5, player.y, player.width + 10, player.height);
+        ctx.globalAlpha = 0.5;
+        ctx.fillRect(player.x - 3, player.y, player.width + 6, player.height);
+        ctx.restore();
+      }
+      
       if (canDraw(visitorImg)) ctx.drawImage(visitorImg, player.x, player.y, player.width, player.height);
       else {
         ctx.fillStyle = COLORS.NEON_GREEN;
@@ -1826,6 +1868,18 @@
     el.backFromStats.addEventListener('click', () => {
       playClick();
       showOverlay('landing');
+    });
+  }
+  if (el.resetStatsBtn) {
+    el.resetStatsBtn.addEventListener('click', () => {
+      if (confirm('Are you sure you want to reset all statistics? This cannot be undone.')) {
+        try {
+          localStorage.removeItem(STATS_KEY);
+          playClick();
+          renderStats();
+          haptic([50, 50, 50]);
+        } catch {}
+      }
     });
   }
   if (el.backFromAchievements) {
