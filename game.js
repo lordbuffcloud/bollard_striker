@@ -25,14 +25,15 @@
   visitorImg.src = 'bollard_striker/visitor.png';
   const bollardImg = new Image();
   bollardImg.src = 'bollard_striker/bollard.png';
+  // Laser power-up uses a simple white circle if image not available
   const whiteMonsterImg = new Image();
-  whiteMonsterImg.src = 'white_monster.png';
+  whiteMonsterImg.src = 'white_monster.png'; // Optional - will fallback to drawn circle
   function canDraw(img) {
     return !!(img && img.complete && img.naturalWidth > 0);
   }
   visitorImg.onerror = () => {};
   bollardImg.onerror = () => {};
-  whiteMonsterImg.onerror = () => {};
+  whiteMonsterImg.onerror = () => {}; // Gracefully handle missing image
 
   const sfx = {
     collision: new Audio('bollard_striker/sounds/collision.mp3'),
@@ -40,7 +41,7 @@
   };
   sfx.collision.preload = 'auto';
   sfx.click.preload = 'auto';
-  const bgm = new Audio('sounds/Krause.mp3');
+  const bgm = new Audio('bollard_striker/sounds/background.mp3');
   bgm.loop = true;
   bgm.preload = 'auto';
 
@@ -85,6 +86,7 @@
   let lastFrameTime = 0;
   let frameCount = 0;
   let fps = 60;
+  let lastFinalScore = 0; // Store final score for leaderboard submission
 
   // Player
   const player = {
@@ -431,6 +433,30 @@
     if (running && !paused) {
       player.x = Math.max(0, Math.min(screen.width - player.width, player.x));
       player.y = screen.height - Math.max(150, Math.floor(player.height * 1.5));
+      
+      // Reposition all bollards to ensure they're within bounds
+      for (const b of bollards) {
+        b.x = Math.max(0, Math.min(screen.width - bollard.width, b.x));
+        // Keep bollards at their current Y or reset if way off screen
+        if (b.y < -500 || b.y > screen.height + 500) {
+          b.y = Math.floor(-140 - Math.random() * 220);
+          b.x = pickSpawnX(b.y);
+        }
+      }
+      
+      // Reposition power-ups if visible
+      if (shield.visible) {
+        shield.x = Math.max(shield.size, Math.min(screen.width - shield.size, shield.x));
+      }
+      if (laserPU.visible) {
+        laserPU.x = Math.max(laserPU.size, Math.min(screen.width - laserPU.size, laserPU.x));
+      }
+      if (speedBoost.visible) {
+        speedBoost.x = Math.max(speedBoost.size, Math.min(screen.width - speedBoost.size, speedBoost.x));
+      }
+      if (scoreMultiplierPU.visible) {
+        scoreMultiplierPU.x = Math.max(scoreMultiplierPU.size, Math.min(screen.width - scoreMultiplierPU.size, scoreMultiplierPU.x));
+      }
     }
   }
   window.addEventListener('resize', resizeCanvas);
@@ -471,11 +497,23 @@
   }
   function playClick() {
     if (!soundEnabled) return;
-    try { sfx.click.currentTime = 0; sfx.click.play(); } catch {}
+    try { 
+      sfx.click.currentTime = 0; 
+      const playPromise = sfx.click.play();
+      if (playPromise !== undefined) {
+        playPromise.catch(() => {}); // Handle autoplay restrictions
+      }
+    } catch {}
   }
   function playCollision() {
     if (!soundEnabled) return;
-    try { sfx.collision.currentTime = 0; sfx.collision.play(); } catch {}
+    try { 
+      sfx.collision.currentTime = 0; 
+      const playPromise = sfx.collision.play();
+      if (playPromise !== undefined) {
+        playPromise.catch(() => {}); // Handle autoplay restrictions
+      }
+    } catch {}
   }
 
   function haptic(pattern) {
@@ -511,6 +549,7 @@
     activeScoreMultiplier = 1;
     streak = 0;
     bestStreak = 0;
+    lastFinalScore = 0;
     shield.active = false;
     shield.visible = false;
     laserPU.active = false;
@@ -522,7 +561,12 @@
     particles.length = 0;
     lasers.length = 0;
     screenShake.intensity = 0;
+    screenShake.x = 0; // Explicitly reset screen shake position
+    screenShake.y = 0;
     invulnerableFor = 0;
+    tiltAxis = 0; // Reset tilt axis
+    player.leftPressed = false; // Reset input states
+    player.rightPressed = false;
     configureSizesForCurrentViewport();
     player.x = Math.floor((lanes.count * lanes.width) / 2 - player.width / 2);
     player.y = screen.height - Math.max(150, Math.floor(player.height * 1.5));
@@ -652,9 +696,10 @@
     if (player.x < 0) player.x = 0;
     if (player.x > screen.width - player.width) player.x = screen.width - player.width;
 
-    // Move bollards
+    // Move bollards (with speed boost consideration for difficulty)
+    const effectiveBollardSpeed = speedBoost.active ? bollard.speed * 0.95 : bollard.speed; // Slightly slower when speed boost active for balance
     for (const b of bollards) {
-      b.y += bollard.speed * dt;
+      b.y += effectiveBollardSpeed * dt;
       if (b.y > screen.height) {
         b.y = Math.floor(-140 - Math.random() * 220);
         let x = pickSpawnX(b.y);
@@ -884,12 +929,21 @@
       screenShake.x = (Math.random() - 0.5) * screenShake.intensity;
       screenShake.y = (Math.random() - 0.5) * screenShake.intensity;
       screenShake.intensity *= 0.85; // Decay
-      if (screenShake.intensity < 0.1) screenShake.intensity = 0;
+      if (screenShake.intensity < 0.1) {
+        screenShake.intensity = 0;
+        screenShake.x = 0; // Explicitly reset to prevent drift
+        screenShake.y = 0;
+      }
+    } else {
+      // Ensure screen shake is always reset when intensity is 0
+      screenShake.x = 0;
+      screenShake.y = 0;
     }
 
     if (health <= 0) {
       running = false;
       const finalScore = Math.floor(score * scoreMultiplier * activeScoreMultiplier);
+      lastFinalScore = finalScore; // Store for leaderboard submission
       el.finalScore.textContent = `Your Final Score: ${finalScore} (Best Streak: ${bestStreak})`;
       el.finalLevel.textContent = `You Reached Level: ${currentLevel}`;
       showOverlay('gameOver');
@@ -898,11 +952,18 @@
 
   function draw() {
     ctx.save();
-    // Apply screen shake
-    ctx.translate(screenShake.x, screenShake.y);
+    // Apply screen shake (only if intensity > 0)
+    if (screenShake.intensity > 0) {
+      ctx.translate(screenShake.x, screenShake.y);
+    }
     
     ctx.fillStyle = COLORS.PRIMARY_BACKGROUND;
-    ctx.fillRect(-screenShake.x, -screenShake.y, screen.width + Math.abs(screenShake.x) * 2, screen.height + Math.abs(screenShake.y) * 2);
+    // Fill entire screen accounting for potential screen shake offset
+    const fillX = screenShake.intensity > 0 ? -screenShake.x : 0;
+    const fillY = screenShake.intensity > 0 ? -screenShake.y : 0;
+    const fillW = screen.width + (screenShake.intensity > 0 ? Math.abs(screenShake.x) * 2 : 0);
+    const fillH = screen.height + (screenShake.intensity > 0 ? Math.abs(screenShake.y) * 2 : 0);
+    ctx.fillRect(fillX, fillY, fillW, fillH);
 
     // Background lane lines for navigation (align to lane grid)
     ctx.save();
@@ -1141,15 +1202,22 @@
     // HUD (drawn without screen shake)
     drawHUD();
 
-    // Pause banner
+    // Pause banner with better visibility
     if (paused) {
       ctx.save();
-      ctx.fillStyle = 'rgba(0,0,0,0.5)';
+      ctx.fillStyle = 'rgba(0,0,0,0.75)';
       ctx.fillRect(0, 0, screen.width, screen.height);
       ctx.fillStyle = COLORS.WHITE;
       ctx.font = 'bold 36px Arial';
       ctx.textAlign = 'center';
-      ctx.fillText('Paused — press P or tap Resume', screen.width / 2, screen.height / 2);
+      ctx.textBaseline = 'middle';
+      const pauseText = isCoarsePointer() ? 'Paused — Tap Resume' : 'Paused — Press P or tap Resume';
+      ctx.fillText(pauseText, screen.width / 2, screen.height / 2);
+      // Add subtle pulsing effect
+      const pulse = 0.8 + 0.2 * Math.sin(performance.now() / 500);
+      ctx.globalAlpha = pulse;
+      ctx.font = 'bold 24px Arial';
+      ctx.fillText('Game is paused', screen.width / 2, screen.height / 2 + 50);
       ctx.restore();
     }
   }
@@ -1293,13 +1361,13 @@
 
   // Tilt controls
   function handleDeviceOrientation(e) {
-    if (!tiltEnabled) { tiltAxis = 0; return; }
+    if (!tiltEnabled || !running || paused) { tiltAxis = 0; return; }
     // gamma: left-right tilt in degrees (-90 to 90). Positive tilt right on iOS.
     const gamma = (typeof e.gamma === 'number') ? e.gamma : 0;
     tiltAxis = Math.max(-1, Math.min(1, gamma / 30));
   }
   function handleDeviceMotion(e) {
-    if (!tiltEnabled) { tiltAxis = 0; return; }
+    if (!tiltEnabled || !running || paused) { tiltAxis = 0; return; }
     const acc = e.accelerationIncludingGravity;
     if (acc && typeof acc.x === 'number') {
       // Invert on some platforms; keep heuristic that right tilt => positive axis
@@ -1319,7 +1387,12 @@
   }
   function setTiltEnabled(next) {
     tiltEnabled = next;
-    if (tiltEnabled) attachMotionListeners(); else detachMotionListeners();
+    if (tiltEnabled) {
+      attachMotionListeners();
+    } else {
+      detachMotionListeners();
+      tiltAxis = 0; // Explicitly reset tilt axis when disabled
+    }
     try { localStorage.setItem(TILT_PREF_KEY, tiltEnabled ? '1' : '0'); } catch {}
   }
   if (tiltEnabled) attachMotionListeners();
@@ -1355,7 +1428,8 @@
   el.nameForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     const name = (el.playerName.value || 'Anonymous').trim().slice(0, 20);
-    const finalScore = parseInt(el.finalScore.textContent.replace(/[^0-9]/g, ''), 10) || 0;
+    // Use stored final score instead of parsing from textContent
+    const finalScore = lastFinalScore || 0;
     const submitBtn = e.target.querySelector('button[type="submit"]');
     const originalText = submitBtn.textContent;
     
@@ -1485,11 +1559,16 @@
     });
   }
 
-  // Auto-pause when tab hidden
+  // Auto-pause when tab hidden (and resume music if needed)
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden && running) {
+    if (document.hidden && running && !paused) {
       paused = true;
       if (el.pauseBtn) el.pauseBtn.textContent = 'Resume';
+      // Pause background music when tab is hidden
+      try { bgm.pause(); } catch {}
+    } else if (!document.hidden && running && paused && musicEnabled) {
+      // Optionally resume music when tab becomes visible again
+      tryStartMusicFromGesture();
     }
   });
 
@@ -1503,6 +1582,9 @@
       // Clamp after tilt movement
       if (player.x < 0) player.x = 0;
       if (player.x > screen.width - player.width) player.x = screen.width - player.width;
+    } else if (!tiltEnabled || !running || paused) {
+      // Ensure tilt axis is reset when game is not running or tilt is disabled
+      tiltAxis = 0;
     }
     originalUpdate(dt);
   };

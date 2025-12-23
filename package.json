@@ -6,7 +6,8 @@
     "node": ">=18.x"
   },
   "dependencies": {
-    "@vercel/postgres": "^0.5.1"
+    "@vercel/postgres": "^0.5.1",
+    "@vercel/edge-config": "^1.0.0"
   },
   "scripts": {
     "dev": "vercel dev",

@@ -3,12 +3,14 @@
 // 1) Vercel Postgres (native) if POSTGRES_URL is set
 // 2) Supabase (PostgREST) if SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are set
 // 3) Vercel KV (Upstash Redis REST) if KV_REST_API_URL and KV_REST_API_TOKEN are set
-// 4) Falls back to 501 when not configured (frontend will fall back to localStorage)
+// 4) Vercel Edge Config if EDGE_CONFIG is set (⚠️ Not recommended - read-optimized, 64KB limit)
+// 5) Falls back to 501 when not configured (frontend will fall back to localStorage)
 
 const KEY = 'bollard_striker:leaderboard';
 const POSTGRES_URL = process.env.POSTGRES_URL;
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET;
+const EDGE_CONFIG = process.env.EDGE_CONFIG;
 
 // Woodpecker's eternal shame - NEVER REMOVE THIS!
 const WOODPECKER_ENTRY = { name: 'WOODPECKER', score: -3, level: 1, date: 'Eternal Lore' };
@@ -58,6 +60,63 @@ async function kvSetLeaderboard(entries) {
   const payload = JSON.stringify(entries);
   const res = await kvPipeline([["SET", KEY, payload]]);
   if (!res.ok) throw new Error(`KV error ${res.status}`);
+}
+
+// Edge Config backend (⚠️ Not recommended for leaderboards - read-optimized, 64KB limit)
+let edgeConfig;
+try {
+  const edgeConfigModule = require('@vercel/edge-config');
+  edgeConfig = edgeConfigModule.get || edgeConfigModule.default?.get;
+} catch (e) {
+  edgeConfig = null;
+}
+
+async function ecGetLeaderboard() {
+  if (!EDGE_CONFIG || !edgeConfig) throw new Error('Edge Config not configured');
+  try {
+    const raw = await edgeConfig(KEY);
+    if (!raw) return [];
+    try {
+      return Array.isArray(raw) ? raw : (typeof raw === 'string' ? JSON.parse(raw) : []);
+    } catch {
+      return [];
+    }
+  } catch (e) {
+    // Edge Config returns null for missing keys, not an error
+    if (e.message && e.message.includes('not found')) return [];
+    throw e;
+  }
+}
+
+async function ecSetLeaderboard(entries) {
+  if (!EDGE_CONFIG) throw new Error('Edge Config not configured');
+  // Edge Config uses Vercel API for writes
+  // Extract connection string ID from EDGE_CONFIG (format: https://edge-config.vercel.app/xxxxx?token=...)
+  const configId = EDGE_CONFIG.split('/').pop()?.split('?')[0];
+  if (!configId) throw new Error('Invalid EDGE_CONFIG format');
+  
+  const token = process.env.EDGE_CONFIG_TOKEN || process.env.VERCEL_TOKEN;
+  if (!token) throw new Error('EDGE_CONFIG_TOKEN or VERCEL_TOKEN required for writes');
+  
+  const url = `https://api.vercel.com/v1/edge-config/${configId}/items`;
+  const resp = await fetch(url, {
+    method: 'PATCH',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      items: [{
+        operation: 'update',
+        key: KEY,
+        value: entries
+      }]
+    })
+  });
+  if (!resp.ok) {
+    const error = await resp.json().catch(() => ({}));
+    throw new Error(`Edge Config error ${resp.status}: ${JSON.stringify(error)}`);
+  }
 }
 
 function withLore(entries) {
@@ -167,8 +226,50 @@ async function sbFetchRaw(limit = 100) {
 
 async function sbInsert(entry) {
   if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) throw new Error('SB not configured');
-  const url = `${SUPABASE_URL}/rest/v1/leaderboard`;
   const payload = sanitizeEntry(entry);
+  
+  // First, check if entry exists
+  const checkUrl = `${SUPABASE_URL}/rest/v1/leaderboard?name=eq.${encodeURIComponent(payload.name)}&select=score`;
+  const checkResp = await fetch(checkUrl, {
+    method: 'GET',
+    headers: {
+      apikey: SUPABASE_SERVICE_ROLE_KEY,
+      Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+      'Content-Type': 'application/json',
+      Prefer: 'return=representation'
+    }
+  });
+  
+  if (checkResp.ok) {
+    const existing = await checkResp.json();
+    if (Array.isArray(existing) && existing.length > 0) {
+      const currentScore = existing[0].score || 0;
+      // Only update if new score is higher
+      if (payload.score > currentScore) {
+        // Update existing entry
+        const updateUrl = `${SUPABASE_URL}/rest/v1/leaderboard?name=eq.${encodeURIComponent(payload.name)}`;
+        const updateResp = await fetch(updateUrl, {
+          method: 'PATCH',
+          headers: {
+            apikey: SUPABASE_SERVICE_ROLE_KEY,
+            Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+            'Content-Type': 'application/json',
+            Prefer: 'return=minimal'
+          },
+          body: JSON.stringify({
+            score: payload.score,
+            level: Math.max(existing[0].level || 1, payload.level),
+            date: payload.date
+          })
+        });
+        if (!updateResp.ok) throw new Error(`SB update error ${updateResp.status}`);
+      }
+      return; // Entry exists and score is not higher, no update needed
+    }
+  }
+  
+  // Insert new entry
+  const url = `${SUPABASE_URL}/rest/v1/leaderboard`;
   const resp = await fetch(url, {
     method: 'POST',
     headers: {
@@ -179,7 +280,29 @@ async function sbInsert(entry) {
     },
     body: JSON.stringify(payload)
   });
-  if (!resp.ok) throw new Error(`SB insert error ${resp.status}`);
+  if (!resp.ok) {
+    // If conflict error, try update instead
+    if (resp.status === 409) {
+      const updateUrl = `${SUPABASE_URL}/rest/v1/leaderboard?name=eq.${encodeURIComponent(payload.name)}`;
+      const updateResp = await fetch(updateUrl, {
+        method: 'PATCH',
+        headers: {
+          apikey: SUPABASE_SERVICE_ROLE_KEY,
+          Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+          'Content-Type': 'application/json',
+          Prefer: 'return=minimal'
+        },
+        body: JSON.stringify({
+          score: payload.score,
+          level: payload.level,
+          date: payload.date
+        })
+      });
+      if (!updateResp.ok) throw new Error(`SB insert/update error ${updateResp.status}`);
+    } else {
+      throw new Error(`SB insert error ${resp.status}`);
+    }
+  }
 }
 
 module.exports = async (req, res) => {
@@ -213,16 +336,33 @@ module.exports = async (req, res) => {
       }
 
       // Priority 3: Vercel KV
-      try {
-        const entriesRaw = await kvGetLeaderboard();
-        const entries = normalize(entriesRaw);
-        try { await kvSetLeaderboard(entries); } catch {}
-        return res.status(200).end(JSON.stringify({ entries, source: 'kv' }));
-      } catch (e) {
-        console.error('KV fetch error:', e);
-        // Return empty with 501 to indicate not configured
-        return res.status(501).end(JSON.stringify({ error: 'Leaderboard not configured', entries: [] }));
+      if (process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN) {
+        try {
+          const entriesRaw = await kvGetLeaderboard();
+          const entries = normalize(entriesRaw);
+          try { await kvSetLeaderboard(entries); } catch {}
+          return res.status(200).end(JSON.stringify({ entries, source: 'kv' }));
+        } catch (e) {
+          console.error('KV fetch error:', e);
+          // Fall through to Edge Config
+        }
       }
+
+      // Priority 4: Vercel Edge Config (⚠️ Not recommended - read-optimized, 64KB limit)
+      if (EDGE_CONFIG && edgeConfig) {
+        try {
+          const entriesRaw = await ecGetLeaderboard();
+          const entries = normalize(entriesRaw);
+          return res.status(200).end(JSON.stringify({ entries, source: 'edge-config' }));
+        } catch (e) {
+          console.error('Edge Config fetch error:', e);
+          // Return empty with 501 to indicate not configured
+          return res.status(501).end(JSON.stringify({ error: 'Leaderboard not configured', entries: [] }));
+        }
+      }
+
+      // No backend configured
+      return res.status(501).end(JSON.stringify({ error: 'Leaderboard not configured', entries: [] }));
     }
 
     if (req.method === 'POST') {
@@ -267,15 +407,33 @@ module.exports = async (req, res) => {
       }
 
       // Priority 3: Vercel KV
-      try {
-        const current = normalize(await kvGetLeaderboard().catch(() => []));
-        const next = mergedTop(current, entry);
-        await kvSetLeaderboard(next);
-        return res.status(200).end(JSON.stringify({ entries: next, source: 'kv' }));
-      } catch (e) {
-        console.error('KV insert error:', e);
-        return res.status(501).end(JSON.stringify({ error: 'Leaderboard not configured', entries: [] }));
+      if (process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN) {
+        try {
+          const current = normalize(await kvGetLeaderboard().catch(() => []));
+          const next = mergedTop(current, entry);
+          await kvSetLeaderboard(next);
+          return res.status(200).end(JSON.stringify({ entries: next, source: 'kv' }));
+        } catch (e) {
+          console.error('KV insert error:', e);
+          // Fall through to Edge Config
+        }
       }
+
+      // Priority 4: Vercel Edge Config (⚠️ Not recommended - read-optimized, writes are slower)
+      if (EDGE_CONFIG && edgeConfig) {
+        try {
+          const current = normalize(await ecGetLeaderboard().catch(() => []));
+          const next = mergedTop(current, entry);
+          await ecSetLeaderboard(next);
+          return res.status(200).end(JSON.stringify({ entries: next, source: 'edge-config' }));
+        } catch (e) {
+          console.error('Edge Config insert error:', e);
+          return res.status(501).end(JSON.stringify({ error: 'Leaderboard not configured', entries: [] }));
+        }
+      }
+
+      // No backend configured
+      return res.status(501).end(JSON.stringify({ error: 'Leaderboard not configured', entries: [] }));
     }
 
     return res.status(405).end(JSON.stringify({ error: 'Method not allowed' }));
