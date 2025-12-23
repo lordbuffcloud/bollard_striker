@@ -97,6 +97,8 @@ canvas#game {
 .btn:hover { filter: brightness(1.06); }
 
 .credit { color: #e8e8e8; opacity: 0.85; margin-top: 8px; }
+.credit a { color: var(--bolt-blue); text-decoration: none; transition: opacity 0.2s; }
+.credit a:hover { opacity: 1; text-decoration: underline; }
 
 .board { list-style: decimal; text-align: left; max-width: 640px; margin: 0; padding-left: 24px; }
 .board li { padding: 6px 0; border-bottom: 1px solid #ffffff1a; }
