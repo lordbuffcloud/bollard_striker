@@ -1,4 +1,22 @@
 (() => {
+  /*
+   * GAME TUNING KNOBS
+   * =================
+   * LANE_COUNT: Number of lanes (3 on mobile, 5 on desktop - auto-detected)
+   * LANE_WIDTH: Width of each lane in pixels (auto-calculated)
+   * SWITCH_TIME_MS: Time in milliseconds for smooth lane switching (lower = faster)
+   * NEAR_MISS_DIST: Distance in pixels to trigger near-miss bonus (lower = harder)
+   * GRACE_MS: Grace window in milliseconds after collision would occur (coyote-time)
+   * 
+   * Tuning tips:
+   * - SWITCH_TIME_MS: 150-250ms feels responsive, <100ms feels instant, >300ms feels sluggish
+   * - NEAR_MISS_DIST: 20-40px works well, adjust based on player/bollard size
+   * - GRACE_MS: 50-150ms feels fair, too high makes game too easy
+   */
+  const SWITCH_TIME_MS = 180; // Smooth lane switch duration
+  const NEAR_MISS_DIST = 30; // Pixels from bollard center to trigger near-miss
+  const GRACE_MS = 100; // Grace window for collisions (coyote-time)
+
   const canvas = document.getElementById('game');
   const ctx = canvas.getContext('2d');
 
@@ -37,10 +55,12 @@
 
   const sfx = {
     collision: new Audio('bollard_striker/sounds/collision.mp3'),
-    click: new Audio('bollard_striker/sounds/click.mp3')
+    click: new Audio('bollard_striker/sounds/click.mp3'),
+    nearMiss: new Audio('bollard_striker/sounds/click.mp3') // Reuse click sound for near-miss
   };
   sfx.collision.preload = 'auto';
   sfx.click.preload = 'auto';
+  sfx.nearMiss.preload = 'auto';
   const bgm = new Audio('bollard_striker/sounds/background.mp3');
   bgm.loop = true;
   bgm.preload = 'auto';
@@ -101,18 +121,27 @@
   let perfectRun = true; // Track if player took no damage
   let maxMultiplier = 1; // Track max multiplier achieved
   let scorePopUps = []; // For visual score pop-ups
+  let nearMissPopUps = []; // For near-miss visual feedback
 
-  // Player
+  // Player with smooth lane switching
   const player = {
     width: 100,
     height: 100,
     x: Math.floor(screen.width / 2) - 50,
     y: screen.height - 150,
-    // pixels per second
+    // pixels per second (for tilt controls)
     speed: 420,
     leftPressed: false,
-    rightPressed: false
+    rightPressed: false,
+    // Smooth lane switching state
+    targetX: Math.floor(screen.width / 2) - 50, // Target position
+    switchProgress: 1.0, // 0.0 = start, 1.0 = complete
+    isSwitching: false, // Whether currently switching lanes
+    queuedSwitch: null // 'left' | 'right' | null - buffered input
   };
+  
+  // Track bollards for near-miss detection
+  const nearMissTracker = new Map(); // bollard index -> { detected: boolean, passed: boolean }
 
   // Bollards
   const bollards = [];
@@ -832,6 +861,17 @@
       }
     } catch {}
   }
+  function playNearMiss() {
+    if (!soundEnabled) return;
+    try { 
+      sfx.nearMiss.currentTime = 0; 
+      sfx.nearMiss.volume = (sfxVolume / 100) * (masterVolume / 100) * 0.7; // Slightly quieter
+      const playPromise = sfx.nearMiss.play();
+      if (playPromise !== undefined) {
+        playPromise.catch(() => {}); // Handle autoplay restrictions
+      }
+    } catch {}
+  }
 
   function haptic(pattern) {
     if (!vibrationEnabled) return;
@@ -883,6 +923,8 @@
     particles.length = 0;
     lasers.length = 0;
     scorePopUps.length = 0;
+    nearMissPopUps.length = 0;
+    nearMissTracker.clear();
     screenShake.intensity = 0;
     screenShake.x = 0; // Explicitly reset screen shake position
     screenShake.y = 0;
@@ -890,8 +932,14 @@
     tiltAxis = 0; // Reset tilt axis
     player.leftPressed = false; // Reset input states
     player.rightPressed = false;
+    // Reset smooth lane switching state
+    player.isSwitching = false;
+    player.switchProgress = 1.0;
+    player.queuedSwitch = null;
+    player.startX = undefined;
     configureSizesForCurrentViewport();
     player.x = Math.floor((lanes.count * lanes.width) / 2 - player.width / 2);
+    player.targetX = player.x;
     player.y = screen.height - Math.max(150, Math.floor(player.height * 1.5));
     initBollards();
   }
@@ -1032,18 +1080,163 @@
     // timers
     if (invulnerableFor > 0) invulnerableFor = Math.max(0, invulnerableFor - dt);
 
-    // Move player (with speed boost)
-    const currentSpeed = speedBoost.active ? player.speed * 1.5 : player.speed;
-    if (player.leftPressed && player.x > 0) player.x -= currentSpeed * dt;
-    if (player.rightPressed && player.x < screen.width - player.width) player.x += currentSpeed * dt;
-    // clamp
-    if (player.x < 0) player.x = 0;
-    if (player.x > screen.width - player.width) player.x = screen.width - player.width;
+    // Smooth lane switching with input buffering
+    const switchTime = SWITCH_TIME_MS / 1000; // Convert to seconds
+    
+    // Handle input for lane switching (keyboard/button controls)
+    if (!tiltEnabled) {
+      // Check for new input
+      if (player.leftPressed && !player.isSwitching) {
+        // Try to switch left
+        const currentLane = Math.max(0, Math.min(lanes.count - 1, Math.floor(player.x / lanes.width)));
+        if (currentLane > 0) {
+          const targetLane = currentLane - 1;
+          player.targetX = Math.max(0, targetLane * lanes.width + (lanes.width - player.width) / 2);
+          if (!player.startX) player.startX = player.x; // Store starting position
+          player.isSwitching = true;
+          player.switchProgress = 0.0;
+        }
+      } else if (player.rightPressed && !player.isSwitching) {
+        // Try to switch right
+        const currentLane = Math.max(0, Math.min(lanes.count - 1, Math.floor(player.x / lanes.width)));
+        if (currentLane < lanes.count - 1) {
+          const targetLane = currentLane + 1;
+          player.targetX = Math.min(screen.width - player.width, targetLane * lanes.width + (lanes.width - player.width) / 2);
+          if (!player.startX) player.startX = player.x; // Store starting position
+          player.isSwitching = true;
+          player.switchProgress = 0.0;
+        }
+      }
+      
+      // Input buffering: if player presses during a switch, queue the next switch
+      if (player.isSwitching) {
+        if (player.leftPressed && !player.queuedSwitch) {
+          const currentLane = Math.max(0, Math.min(lanes.count - 1, Math.floor(player.targetX / lanes.width)));
+          if (currentLane > 0) {
+            player.queuedSwitch = 'left';
+          }
+        } else if (player.rightPressed && !player.queuedSwitch) {
+          const currentLane = Math.max(0, Math.min(lanes.count - 1, Math.floor(player.targetX / lanes.width)));
+          if (currentLane < lanes.count - 1) {
+            player.queuedSwitch = 'right';
+          }
+        }
+      }
+      
+      // Update smooth lane switching
+      if (player.isSwitching) {
+        // Store start position if not already set
+        if (player.startX === undefined) player.startX = player.x;
+        
+        player.switchProgress += dt / switchTime;
+        if (player.switchProgress >= 1.0) {
+          player.switchProgress = 1.0;
+          player.x = player.targetX;
+          player.isSwitching = false;
+          player.startX = undefined; // Reset for next switch
+          
+          // Process queued switch
+          if (player.queuedSwitch) {
+            const currentLane = Math.max(0, Math.min(lanes.count - 1, Math.floor(player.x / lanes.width)));
+            if (player.queuedSwitch === 'left' && currentLane > 0) {
+              const targetLane = currentLane - 1;
+              player.targetX = Math.max(0, targetLane * lanes.width + (lanes.width - player.width) / 2);
+              player.startX = player.x; // Store starting position for queued switch
+              player.isSwitching = true;
+              player.switchProgress = 0.0;
+            } else if (player.queuedSwitch === 'right' && currentLane < lanes.count - 1) {
+              const targetLane = currentLane + 1;
+              player.targetX = Math.min(screen.width - player.width, targetLane * lanes.width + (lanes.width - player.width) / 2);
+              player.startX = player.x; // Store starting position for queued switch
+              player.isSwitching = true;
+              player.switchProgress = 0.0;
+            }
+            player.queuedSwitch = null;
+          }
+        } else {
+          // Smooth interpolation using ease-out cubic for responsive feel
+          const t = player.switchProgress;
+          const easeT = 1 - Math.pow(1 - t, 3); // Ease-out cubic
+          player.x = player.startX + (player.targetX - player.startX) * easeT;
+        }
+      }
+      
+      // Clamp to bounds
+      player.x = Math.max(0, Math.min(screen.width - player.width, player.x));
+    } else {
+      // Tilt controls (original behavior)
+      const currentSpeed = speedBoost.active ? player.speed * 1.5 : player.speed;
+      const delta = tiltAxis * (currentSpeed * tiltSensitivity) * dt;
+      player.x += delta;
+      player.x = Math.max(0, Math.min(screen.width - player.width, player.x));
+      // Reset switching state for tilt
+      player.isSwitching = false;
+      player.queuedSwitch = null;
+      player.targetX = player.x;
+      player.startX = undefined;
+    }
 
     // Move bollards (with speed boost consideration for difficulty)
     const effectiveBollardSpeed = speedBoost.active ? bollard.speed * 0.95 : bollard.speed; // Slightly slower when speed boost active for balance
-    for (const b of bollards) {
+    for (let i = 0; i < bollards.length; i++) {
+      const b = bollards[i];
       b.y += effectiveBollardSpeed * dt;
+      
+      // Near-miss detection: check if player passes close to bollard
+      if (!nearMissTracker.has(i)) {
+        nearMissTracker.set(i, { detected: false, passed: false });
+      }
+      const tracker = nearMissTracker.get(i);
+      
+      // Only check near-miss if bollard is near player's Y position
+      const playerCenterY = player.y + player.height / 2;
+      const bollardCenterY = b.y + bollard.height / 2;
+      const verticalDist = Math.abs(playerCenterY - bollardCenterY);
+      
+      if (!tracker.passed && verticalDist < 100) {
+        // Check horizontal distance
+        const playerCenterX = player.x + player.width / 2;
+        const bollardCenterX = b.x + bollard.width / 2;
+        const horizontalDist = Math.abs(playerCenterX - bollardCenterX);
+        
+        if (horizontalDist <= NEAR_MISS_DIST && !tracker.detected) {
+          // Near-miss detected!
+          tracker.detected = true;
+          const bonusPoints = Math.floor(5 * activeScoreMultiplier);
+          score += bonusPoints;
+          playNearMiss();
+          haptic([20, 30, 20]);
+          
+          // Add near-miss visual feedback
+          nearMissPopUps.push({
+            x: bollardCenterX,
+            y: bollardCenterY,
+            value: `NEAR MISS! +${bonusPoints}`,
+            life: 1.5,
+            vy: -80
+          });
+          
+          // Add particles for near-miss (using object pool)
+          if (!reducedMotion) {
+            for (let j = 0; j < 6 && particles.length < MAX_PARTICLES; j++) {
+              const p = getParticle();
+              p.x = bollardCenterX;
+              p.y = bollardCenterY;
+              p.vx = (Math.random() - 0.5) * 150;
+              p.vy = (Math.random() - 0.5) * 150;
+              p.life = 1.2;
+              p.color = COLORS.NEON_GREEN;
+              particles.push(p);
+            }
+          }
+        }
+      }
+      
+      // Mark as passed once bollard is below player
+      if (bollardCenterY > playerCenterY + 50) {
+        tracker.passed = true;
+      }
+      
       if (b.y > screen.height) {
         b.y = Math.floor(-140 - Math.random() * 220);
         let x = pickSpawnX(b.y);
@@ -1058,6 +1251,8 @@
           }
         }
         b.x = x;
+        // Clean up near-miss tracker for respawned bollard
+        nearMissTracker.delete(i);
         // scoring with combo and active multipliers
         streak += 1;
         bestStreak = Math.max(bestStreak, streak);
@@ -1106,61 +1301,84 @@
       }
     }
 
-    // Collisions (use reduced hitboxes for fairness; extra leniency on mobile)
+    // Collisions with grace window (coyote-time) and reduced hitboxes
+    const graceTime = GRACE_MS / 1000; // Convert to seconds
+    
     for (const b of bollards) {
       const coarse = (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) || (window.innerWidth <= 820);
       const playerScale = coarse ? 0.40 : 0.70;
       const bollardScale = coarse ? 0.55 : 0.80;
       const pb = scaledRect(player.x, player.y, player.width, player.height, playerScale);
       const bb = scaledRect(b.x, b.y, bollard.width, bollard.height, bollardScale);
+      
       if (rectsOverlap(bb.x, bb.y, bb.w, bb.h, pb.x, pb.y, pb.w, pb.h)) {
-        if (invulnerableFor > 0) continue; // grace period
-        playCollision();
-        if (shield.active) {
-          // Consume shield, keep playing
-          shield.active = false;
-          invulnerableFor = 1.0; // brief grace after shield pops
-          // Clear nearby hazards to avoid instant follow-up hits
-          for (const r of bollards) {
-            r.y = Math.floor(-50 - Math.random() * 100);
-            r.x = Math.floor(Math.random() * (screen.width - bollard.width));
-          }
-          // Add shield break particles (using object pool)
-          for (let i = 0; i < 8 && particles.length < MAX_PARTICLES; i++) {
-            const p = getParticle();
-            p.x = player.x + player.width / 2;
-            p.y = player.y + player.height / 2;
-            p.vx = (Math.random() - 0.5) * 200;
-            p.vy = (Math.random() - 0.5) * 200;
-            p.life = 1.0;
-            p.color = COLORS.BOLT_BLUE;
-            particles.push(p);
-          }
-        } else {
-          health -= 1;
-          perfectRun = false; // Player took damage
-          streak = 0;
-          invulnerableFor = isCoarsePointer() ? 1.2 : 1.0; // slightly shorter to restore challenge
-          // Screen shake on damage
-          screenShake.intensity = reducedMotion ? 4 : 10;
-          // Add damage particles (using object pool)
-          for (let i = 0; i < 12 && particles.length < MAX_PARTICLES; i++) {
-            const p = getParticle();
-            p.x = player.x + player.width / 2;
-            p.y = player.y + player.height / 2;
-            p.vx = (Math.random() - 0.5) * 300;
-            p.vy = (Math.random() - 0.5) * 300;
-            p.life = 1.5;
-            p.color = COLORS.DEEP_RED;
-            particles.push(p);
-          }
-          // reset bollards with extra spacing so immediate re-hit is less likely on mobile
-          for (const r of bollards) {
-            r.y = Math.floor(-200 - Math.random() * 240);
-            r.x = pickSpawnX(r.y);
+        if (invulnerableFor > 0) continue; // Existing grace period
+        
+        // Grace window check: if bollard is very close vertically, give player a chance to escape
+        const playerCenterY = player.y + player.height / 2;
+        const bollardCenterY = b.y + bollard.height / 2;
+        const verticalDist = Math.abs(playerCenterY - bollardCenterY);
+        const maxGraceDist = (effectiveBollardSpeed * graceTime) + (player.height / 2) + (bollard.height / 2);
+        
+        // If within grace window, check if player is moving away from bollard
+        let inGraceWindow = false;
+        if (verticalDist <= maxGraceDist) {
+          // Check if player is actively moving away (switching lanes)
+          if (player.isSwitching) {
+            // Player is switching - give grace
+            inGraceWindow = true;
           }
         }
-        break;
+        
+        // Only process collision if not in grace window
+        if (!inGraceWindow) {
+          playCollision();
+          if (shield.active) {
+            // Consume shield, keep playing
+            shield.active = false;
+            invulnerableFor = 1.0; // brief grace after shield pops
+            // Clear nearby hazards to avoid instant follow-up hits
+            for (const r of bollards) {
+              r.y = Math.floor(-50 - Math.random() * 100);
+              r.x = Math.floor(Math.random() * (screen.width - bollard.width));
+            }
+            // Add shield break particles (using object pool)
+            for (let i = 0; i < 8 && particles.length < MAX_PARTICLES; i++) {
+              const p = getParticle();
+              p.x = player.x + player.width / 2;
+              p.y = player.y + player.height / 2;
+              p.vx = (Math.random() - 0.5) * 200;
+              p.vy = (Math.random() - 0.5) * 200;
+              p.life = 1.0;
+              p.color = COLORS.BOLT_BLUE;
+              particles.push(p);
+            }
+          } else {
+            health -= 1;
+            perfectRun = false; // Player took damage
+            streak = 0;
+            invulnerableFor = isCoarsePointer() ? 1.2 : 1.0; // slightly shorter to restore challenge
+            // Screen shake on damage (respect reduced motion)
+            screenShake.intensity = reducedMotion ? 0 : 10;
+            // Add damage particles (using object pool)
+            for (let i = 0; i < 12 && particles.length < MAX_PARTICLES; i++) {
+              const p = getParticle();
+              p.x = player.x + player.width / 2;
+              p.y = player.y + player.height / 2;
+              p.vx = (Math.random() - 0.5) * 300;
+              p.vy = (Math.random() - 0.5) * 300;
+              p.life = 1.5;
+              p.color = COLORS.DEEP_RED;
+              particles.push(p);
+            }
+            // reset bollards with extra spacing so immediate re-hit is less likely on mobile
+            for (const r of bollards) {
+              r.y = Math.floor(-200 - Math.random() * 240);
+              r.x = pickSpawnX(r.y);
+            }
+          }
+          break;
+        }
       }
     }
 
@@ -1277,6 +1495,16 @@
       pop.life -= dt * 0.8;
       if (pop.life <= 0) {
         scorePopUps.splice(i, 1);
+      }
+    }
+    
+    // Update near-miss pop-ups
+    for (let i = nearMissPopUps.length - 1; i >= 0; i--) {
+      const pop = nearMissPopUps[i];
+      pop.y += pop.vy * dt;
+      pop.life -= dt * 0.7;
+      if (pop.life <= 0) {
+        nearMissPopUps.splice(i, 1);
       }
     }
 
@@ -1633,6 +1861,25 @@
         ctx.textBaseline = 'middle';
         ctx.shadowColor = 'rgba(0,0,0,0.8)';
         ctx.shadowBlur = 4;
+        ctx.fillText(pop.value, pop.x, pop.y);
+      }
+      ctx.restore();
+    }
+    
+    // Draw near-miss pop-ups (only when game is running)
+    if (running && nearMissPopUps.length > 0) {
+      ctx.save();
+      for (const pop of nearMissPopUps) {
+        const alpha = Math.max(0, pop.life);
+        if (alpha <= 0) continue;
+        ctx.globalAlpha = alpha;
+        const scale = 1.0 + (1 - pop.life) * 0.3; // Slightly larger for emphasis
+        ctx.font = `bold ${Math.floor(24 * scale)}px Arial`;
+        ctx.fillStyle = COLORS.NEON_GREEN;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.shadowColor = COLORS.NEON_GREEN;
+        ctx.shadowBlur = 8;
         ctx.fillText(pop.value, pop.x, pop.y);
       }
       ctx.restore();
