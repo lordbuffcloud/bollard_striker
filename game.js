@@ -862,8 +862,8 @@
     } else {
       bollard.speed = raw;
     }
-    // Derive a level for display (every 8 points for more frequent level-ups)
-    currentLevel = Math.max(1, Math.floor(score / 8) + 1);
+    // Derive a level for display (every 6 points to match faster ramp)
+    currentLevel = Math.max(1, Math.floor(score / 6) + 1);
     scoreMultiplier = 1 + Math.min(2.0, streak * 0.03); // better bonus from streaks
   }
   function updateAudioVolumes() {
