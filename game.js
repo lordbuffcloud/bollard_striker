@@ -850,10 +850,10 @@
   function recalcDifficulty() {
     // Progressive difficulty with gentler mobile curve
     const coarse = isCoarsePointer();
-    const incrementSteps = Math.floor(score / (coarse ? 6 : 5));
-    const base = coarse ? 110 : 160;
-    const step = coarse ? 12 : 18;
-    const capSteps = coarse ? 20 : 28;
+    const incrementSteps = Math.floor(score / (coarse ? 5 : 4));
+    const base = coarse ? 120 : 170;
+    const step = coarse ? 16 : 22;
+    const capSteps = coarse ? 24 : 32;
     const raw = base + Math.min(capSteps, incrementSteps) * step;
     // Strong damping on mobile and cap speed low
     if (coarse) {
