@@ -337,16 +337,48 @@
     el.lbList.innerHTML = '';
     if (!entries || entries.length === 0) {
       const li = document.createElement('li');
+      li.className = 'board-source';
       li.textContent = 'No scores yet.';
       el.lbList.appendChild(li);
       return;
     }
-    for (const { name, score, level, date } of entries) {
+    entries.forEach((entry, index) => {
+      const name = entry && entry.name ? String(entry.name) : 'Anonymous';
+      const scoreValue = Number.isFinite(Number(entry?.score)) ? Number(entry?.score) : 0;
+      const levelValue = Number.isFinite(Number(entry?.level)) ? Number(entry?.level) : 1;
+      const dateValue = entry?.date ? String(entry.date) : 'Unknown';
+
       const li = document.createElement('li');
-      li.textContent = `${name} — Score: ${score} — Level: ${level} — ${date}`;
+      li.className = 'board-row';
+
+      const rank = document.createElement('span');
+      rank.className = 'rank';
+      rank.textContent = String(index + 1);
+
+      const main = document.createElement('div');
+      main.className = 'board-main';
+
+      const player = document.createElement('span');
+      player.className = 'name';
+      player.textContent = name;
+
+      const details = document.createElement('span');
+      details.className = 'details';
+      details.textContent = `Level ${levelValue} | ${dateValue}`;
+
+      const score = document.createElement('span');
+      score.className = 'score';
+      score.textContent = String(scoreValue);
+
+      main.appendChild(player);
+      main.appendChild(details);
+      li.appendChild(rank);
+      li.appendChild(main);
+      li.appendChild(score);
       el.lbList.appendChild(li);
-    }
+    });
   }
+
 
   let globalLeaderboardAvailable = false;
   let leaderboardSource = 'local';
@@ -405,7 +437,7 @@
 
   async function renderLeaderboard() {
     // Show loading state
-    el.lbList.innerHTML = '<li>Loading leaderboard...</li>';
+    el.lbList.innerHTML = '<li class="board-source">Loading leaderboard...</li>';
     
     try {
       const entries = await fetchGlobalLeaderboard();
@@ -416,16 +448,16 @@
       renderEntries(entries);
       // Show source indicator
       const sourceIndicator = document.createElement('li');
-      sourceIndicator.style.cssText = 'font-size: 12px; color: #888; font-style: italic; margin-top: 8px; list-style: none;';
-      sourceIndicator.textContent = `🌐 Global Leaderboard (${leaderboardSource})`;
+      sourceIndicator.className = 'board-source';
+      sourceIndicator.textContent = `Global Leaderboard (${leaderboardSource})`;
       el.lbList.appendChild(sourceIndicator);
     } catch (e) {
       // fallback to local
       const entries = getLeaderboard();
       renderEntries(entries);
       const sourceIndicator = document.createElement('li');
-      sourceIndicator.style.cssText = 'font-size: 12px; color: #888; font-style: italic; margin-top: 8px; list-style: none;';
-      sourceIndicator.textContent = '📱 Local Leaderboard (Global unavailable)';
+      sourceIndicator.className = 'board-source';
+      sourceIndicator.textContent = 'Local Leaderboard (Global unavailable)';
       el.lbList.appendChild(sourceIndicator);
     }
   }
@@ -2170,8 +2202,8 @@
       renderEntries(entries);
       // Show success indicator
       const sourceIndicator = document.createElement('li');
-      sourceIndicator.style.cssText = 'font-size: 12px; color: #39ff14; font-style: italic; margin-top: 8px; list-style: none;';
-      sourceIndicator.textContent = `✅ Score saved to Global Leaderboard (${leaderboardSource})`;
+      sourceIndicator.className = 'board-source success';
+      sourceIndicator.textContent = `Score saved to Global Leaderboard (${leaderboardSource})`;
       el.lbList.appendChild(sourceIndicator);
     } catch (err) {
       // Fallback to local storage
@@ -2182,8 +2214,8 @@
       renderEntries(entries);
       // Show local indicator
       const sourceIndicator = document.createElement('li');
-      sourceIndicator.style.cssText = 'font-size: 12px; color: #ffd700; font-style: italic; margin-top: 8px; list-style: none;';
-      sourceIndicator.textContent = '⚠️ Saved locally (Global leaderboard unavailable)';
+      sourceIndicator.className = 'board-source warn';
+      sourceIndicator.textContent = 'Saved locally (Global leaderboard unavailable)';
       el.lbList.appendChild(sourceIndicator);
     } finally {
       submitBtn.disabled = false;

@@ -8,12 +8,15 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="color-scheme" content="dark light" />
   <title>Bollard Striker</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <link rel="icon" href="bollard_striker/favicon.ico" />
   <link rel="preload" as="image" href="bollard_striker/visitor.png" />
   <link rel="preload" as="image" href="bollard_striker/bollard.png" />
   <link rel="preload" as="audio" href="bollard_striker/sounds/collision.mp3" />
   <link rel="preload" as="audio" href="bollard_striker/sounds/click.mp3" />
-  <link rel="stylesheet" href="style.css?v=2" />
+  <link rel="stylesheet" href="style.css?v=3" />
 </head>
 <body>
   <div class="app">
@@ -42,160 +45,214 @@
 
       <!-- Landing overlay -->
       <section id="landing" class="overlay visible">
-        <h1>You Are Approaching WPAFB Gate</h1>
-        <p>Good luck! Avoid the bollards.</p>
-        <div class="cta-row">
-          <button id="startBtn" class="btn primary">Start</button>
-          <button id="leaderboardBtn" class="btn">View Leaderboard</button>
-          <button id="statsBtn" class="btn">Statistics</button>
-          <button id="achievementsBtn" class="btn">Achievements</button>
-          <button id="tutorialBtn" class="btn">How to Play</button>
+        <div class="overlay-panel hero-panel">
+          <h1>You Are Approaching WPAFB Gate</h1>
+          <p>Good luck! Avoid the bollards.</p>
+          <div class="cta-row">
+            <button id="startBtn" class="btn primary">Start</button>
+            <button id="leaderboardBtn" class="btn">View Leaderboard</button>
+            <button id="statsBtn" class="btn">Statistics</button>
+            <button id="achievementsBtn" class="btn">Achievements</button>
+            <button id="tutorialBtn" class="btn">How to Play</button>
+          </div>
+          <p class="credit">
+            <a href="https://ck42x.com" target="_blank" rel="noopener noreferrer">ck42x.com</a>
+          </p>
         </div>
-        <p class="credit">
-          <a href="https://ck42x.com" target="_blank" rel="noopener noreferrer">ck42x.com</a>
-        </p>
       </section>
 
       <!-- Countdown overlay -->
       <section id="countdown" class="overlay">
-        <h2 id="countdownLabel">3</h2>
+        <div class="overlay-panel mini-panel">
+          <h2 id="countdownLabel">3</h2>
+        </div>
       </section>
 
       <!-- Leaderboard overlay -->
       <section id="leaderboard" class="overlay">
-        <h2>Leaderboard</h2>
-        <div class="cta-row" style="margin-bottom: 12px;">
-          <button id="refreshLeaderboard" class="btn" style="font-size: 14px; padding: 8px 12px;">🔄 Refresh</button>
-        </div>
-        <ol id="leaderboardList" class="board"></ol>
-        <div class="cta-row">
-          <button id="backFromLeaderboard" class="btn">Back</button>
+        <div class="overlay-panel">
+          <div class="panel-header">
+            <div>
+              <h2>Leaderboard</h2>
+              <p class="panel-subtitle">Top runs across all pilots.</p>
+            </div>
+            <button id="refreshLeaderboard" class="btn small">Refresh</button>
+          </div>
+          <ol id="leaderboardList" class="board"></ol>
+          <div class="cta-row">
+            <button id="backFromLeaderboard" class="btn">Back</button>
+          </div>
         </div>
       </section>
 
       <!-- Statistics overlay -->
       <section id="statistics" class="overlay">
-        <h2>Statistics</h2>
-        <div id="statsContent" class="stats-content"></div>
-        <div class="cta-row">
-          <button id="resetStatsBtn" class="btn" style="background: var(--deep-red);">Reset Stats</button>
-          <button id="backFromStats" class="btn">Back</button>
+        <div class="overlay-panel">
+          <div class="panel-header">
+            <div>
+              <h2>Statistics</h2>
+              <p class="panel-subtitle">Career totals and bests.</p>
+            </div>
+          </div>
+          <div id="statsContent" class="stats-content"></div>
+          <div class="cta-row">
+            <button id="resetStatsBtn" class="btn danger">Reset Stats</button>
+            <button id="backFromStats" class="btn">Back</button>
+          </div>
         </div>
       </section>
 
       <!-- Achievements overlay -->
       <section id="achievements" class="overlay">
-        <h2>Achievements</h2>
-        <div id="achievementsList" class="achievements-list"></div>
-        <div class="cta-row">
-          <button id="backFromAchievements" class="btn">Back</button>
+        <div class="overlay-panel">
+          <div class="panel-header">
+            <div>
+              <h2>Achievements</h2>
+              <p class="panel-subtitle">Progress and bragging rights.</p>
+            </div>
+          </div>
+          <div id="achievementsList" class="achievements-list"></div>
+          <div class="cta-row">
+            <button id="backFromAchievements" class="btn">Back</button>
+          </div>
         </div>
       </section>
 
       <!-- Settings overlay -->
       <section id="settings" class="overlay sheet">
-        <h2>Settings</h2>
-        <form id="settingsForm" class="settings-form sheet-panel">
-          <div class="field">
-            <label class="row"><input type="checkbox" id="enableTilt" /> <span>Enable Tilt Controls</span></label>
-            <button type="button" id="requestMotionPermission" class="btn">Enable Motion Access (iOS)</button>
+        <div class="overlay-panel sheet-panel">
+          <div class="panel-header">
+            <div>
+              <h2>Settings</h2>
+              <p class="panel-subtitle">Tune controls and audio.</p>
+            </div>
           </div>
-          <div class="field">
-            <label for="tiltSensitivity">Tilt Sensitivity</label>
-            <input type="range" id="tiltSensitivity" min="0.2" max="3" step="0.1" />
+          <form id="settingsForm" class="settings-form">
+            <div class="settings-group">
+              <h3>Controls</h3>
+              <div class="field">
+                <label class="row"><input type="checkbox" id="enableTilt" /> <span>Enable Tilt Controls</span></label>
+                <button type="button" id="requestMotionPermission" class="btn small">Enable Motion Access (iOS)</button>
+              </div>
+              <div class="field">
+                <label for="tiltSensitivity">Tilt Sensitivity</label>
+                <input type="range" id="tiltSensitivity" min="0.2" max="3" step="0.1" />
+              </div>
+            </div>
+            <div class="settings-group">
+              <h3>Audio</h3>
+              <div class="field row">
+                <label class="row"><input type="checkbox" id="enableMusic" /> <span>Background Music</span></label>
+              </div>
+              <div class="field">
+                <label for="masterVolume">Master Volume</label>
+                <div class="range-row">
+                  <input type="range" id="masterVolume" min="0" max="100" step="5" value="100" />
+                  <span id="masterVolumeValue">100%</span>
+                </div>
+              </div>
+              <div class="field">
+                <label for="musicVolume">Music Volume</label>
+                <div class="range-row">
+                  <input type="range" id="musicVolume" min="0" max="100" step="5" value="60" />
+                  <span id="musicVolumeValue">60%</span>
+                </div>
+              </div>
+              <div class="field">
+                <label for="sfxVolume">Sound Effects Volume</label>
+                <div class="range-row">
+                  <input type="range" id="sfxVolume" min="0" max="100" step="5" value="100" />
+                  <span id="sfxVolumeValue">100%</span>
+                </div>
+              </div>
+            </div>
+            <div class="settings-group">
+              <h3>Accessibility</h3>
+              <div class="field row">
+                <label class="row"><input type="checkbox" id="reducedMotion" /> <span>Reduced Motion</span></label>
+              </div>
+            </div>
+          </form>
+          <div class="cta-row">
+            <button id="closeSettings" class="btn">Close</button>
           </div>
-          <div class="field row">
-            <label class="row"><input type="checkbox" id="enableMusic" /> <span>Background Music</span></label>
-          </div>
-          <div class="field">
-            <label for="masterVolume">Master Volume</label>
-            <input type="range" id="masterVolume" min="0" max="100" step="5" value="100" />
-            <span id="masterVolumeValue">100%</span>
-          </div>
-          <div class="field">
-            <label for="musicVolume">Music Volume</label>
-            <input type="range" id="musicVolume" min="0" max="100" step="5" value="60" />
-            <span id="musicVolumeValue">60%</span>
-          </div>
-          <div class="field">
-            <label for="sfxVolume">Sound Effects Volume</label>
-            <input type="range" id="sfxVolume" min="0" max="100" step="5" value="100" />
-            <span id="sfxVolumeValue">100%</span>
-          </div>
-          <div class="field row">
-            <label class="row"><input type="checkbox" id="reducedMotion" /> <span>Reduced Motion</span></label>
-          </div>
-        </form>
-        <div class="cta-row">
-          <button id="closeSettings" class="btn">Close</button>
         </div>
       </section>
 
       <!-- Tutorial overlay -->
       <section id="tutorial" class="overlay">
-        <h2>How to Play</h2>
-        <div class="howto">
-          <div class="card">
-            <h3>Goal</h3>
-            <p>Avoid the bollards. Survive, score points, and build your streak.</p>
+        <div class="overlay-panel">
+          <div class="panel-header">
+            <div>
+              <h2>How to Play</h2>
+              <p class="panel-subtitle">Survive, score, repeat.</p>
+            </div>
           </div>
-          <div class="card">
-            <h3>Controls</h3>
-            <ul>
-              <li>Mobile: tap left/right half of the screen or use on-screen pads.</li>
-              <li>Optional: enable Tilt in Settings and set sensitivity.</li>
-              <li>Desktop: use Left/Right arrow keys. Press P to pause.</li>
-            </ul>
+          <div class="howto">
+            <div class="card">
+              <h3>Goal</h3>
+              <p>Avoid the bollards. Survive, score points, and build your streak.</p>
+            </div>
+            <div class="card">
+              <h3>Controls</h3>
+              <ul>
+                <li>Mobile: tap left/right half of the screen or use on-screen pads.</li>
+                <li>Optional: enable Tilt in Settings and set sensitivity.</li>
+                <li>Desktop: use Left/Right arrow keys. Press P to pause.</li>
+              </ul>
+            </div>
+            <div class="card">
+              <h3>Power-ups</h3>
+              <p>Collect the blue shield to absorb one hit. Keep your streak to boost score.</p>
+            </div>
+            <div class="card">
+              <h3>Tips</h3>
+              <ul>
+                <li>Watch lane lines to judge gaps.</li>
+                <li>High streaks increase difficulty and score multiplier.</li>
+                <li>Turn on Reduced Motion in Settings if effects feel intense.</li>
+              </ul>
+            </div>
           </div>
-          <div class="card">
-            <h3>Power-ups</h3>
-            <p>Collect the blue shield to absorb one hit. Keep your streak to boost score.</p>
+          <div class="cta-row">
+            <button id="closeTutorial" class="btn primary">Got it</button>
           </div>
-          <div class="card">
-            <h3>Tips</h3>
-            <ul>
-              <li>Watch lane lines to judge gaps.</li>
-              <li>High streaks increase difficulty and score multiplier.</li>
-              <li>Turn on Reduced Motion in Settings if effects feel intense.</li>
-            </ul>
-          </div>
-        </div>
-        <div class="cta-row">
-          <button id="closeTutorial" class="btn primary">Got it</button>
         </div>
       </section>
 
       <!-- Game over overlay -->
       <section id="gameOver" class="overlay">
-        <h2>Game Over</h2>
-        <p id="finalScore">Your Final Score: 0</p>
-        <p id="finalLevel">You Reached Level: 1</p>
-        <form id="nameForm" class="name-form">
-          <label for="playerName">Enter your name</label>
-          <input id="playerName" name="playerName" maxlength="20" autocomplete="off" />
-          <button type="submit" class="btn primary">Save</button>
-        </form>
-        <div class="cta-row">
-          <button id="playAgainBtn" class="btn">Play Again</button>
+        <div class="overlay-panel">
+          <h2>Game Over</h2>
+          <p id="finalScore">Your Final Score: 0</p>
+          <p id="finalLevel">You Reached Level: 1</p>
+          <form id="nameForm" class="name-form">
+            <label for="playerName">Enter your name</label>
+            <input id="playerName" name="playerName" maxlength="20" autocomplete="off" />
+            <button type="submit" class="btn primary">Save</button>
+          </form>
+          <div class="cta-row">
+            <button id="playAgainBtn" class="btn">Play Again</button>
+          </div>
         </div>
       </section>
 
       <!-- Mobile controls -->
       <div class="mobile-controls">
-        <button id="moveLeft" class="pad">◀</button>
-        <button id="moveRight" class="pad">▶</button>
+        <button id="moveLeft" class="pad">LEFT</button>
+        <button id="moveRight" class="pad">RIGHT</button>
       </div>
     </main>
 
     <!-- Mobile floating Settings button -->
-    <button id="settingsFab" type="button" class="btn fab" aria-label="Settings">Settings ⚙️</button>
+    <button id="settingsFab" type="button" class="btn fab" aria-label="Settings">Settings</button>
 
     <footer class="footer">
-      <span>© <span id="year"></span> Bollard Striker</span>
+      <span>(c) <span id="year"></span> Bollard Striker</span>
     </footer>
   </div>
 
-  <script src="game.js?v=3"></script>
+  <script src="game.js?v=4"></script>
 </body>
 </html>
 
