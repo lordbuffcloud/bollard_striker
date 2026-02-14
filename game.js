@@ -92,6 +92,7 @@
   let scoreMultiplier = 1; // retained for display compatibility
   let score = 0;
   let health = 3;
+  let deaths = 0; // Track total deaths for stats
   let running = false;
   let streak = 0;
   let bestStreak = 0;
@@ -1043,6 +1044,10 @@
       ctx.fillStyle = 'rgba(178, 34, 34, 0.3)';
       ctx.fillRect(0, 0, screen.width, screen.height); // Red overlay warning
     }
+
+    // Deaths counter - shows total deaths in session
+    ctx.fillStyle = COLORS.METALLIC_SILVER;
+    ctx.fillText(`Deaths: ${deaths}`, 10, 70);
     
     ctx.fillStyle = COLORS.NEON_GREEN;
     ctx.fillText(`Level: ${currentLevel}`, 10, 70);
@@ -1575,6 +1580,7 @@
     }
 
     if (health <= 0) {
+      deaths++; // Increment death counter
       running = false;
       const finalScore = Math.floor(score * scoreMultiplier * activeScoreMultiplier);
       lastFinalScore = finalScore; // Store for leaderboard submission
