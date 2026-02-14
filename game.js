@@ -77,6 +77,7 @@
   const SFX_VOLUME_KEY = 'bollard-striker-sfx-volume';
   const STATS_KEY = 'bollard-striker-stats-v1';
   const ACHIEVEMENTS_KEY = 'bollard-striker-achievements-v1';
+  const XP_KEY = 'bollard-striker-xp-v1';
   let soundEnabled = false;
   let vibrationEnabled = false;
   let musicEnabled = false;
@@ -93,6 +94,11 @@
   let score = 0;
   let health = 3;
   let deaths = 0; // Track total deaths for stats
+  // XP Progression System
+  let playerXP = 0;
+  let playerLevel = 1;
+  const XP_PER_LEVEL = 100;
+  let levelUpAnimation = { active: false, time: 0, duration: 2.0 };
   let running = false;
   let streak = 0;
   let bestStreak = 0;
@@ -115,6 +121,8 @@
   let lastFrameTime = 0;
   let frameCount = 0;
   let fps = 60;
+  let frameTimeAccumulator = 0; // Track frame timing for performance monitoring
+  let slowFrameCount = 0; // Count frames below 60fps
   let lastFinalScore = 0; // Store final score for leaderboard submission
   let gameStartTime = 0; // Track game session time
   let gamePowerUps = { total: 0, shields: 0, lasers: 0, speedBoosts: 0, multipliers: 0 }; // Track power-ups this game
@@ -123,6 +131,10 @@
   let maxMultiplier = 1; // Track max multiplier achieved
   let scorePopUps = []; // For visual score pop-ups
   let nearMissPopUps = []; // For near-miss visual feedback
+  let comboFlash = { active: false, time: 0, intensity: 0 }; // Combo multiplier flash effect
+  let hitFlash = { active: false, time: 0 }; // Hit damage flash
+  let powerUpSpawnGlow = []; // Glow effects for power-up spawns
+  let streakMilestones = []; // Streak milestone celebrations
 
   // Player with smooth lane switching
   const player = {
@@ -210,6 +222,14 @@
       shield.visible = true;
       shield.x = Math.floor(16 + Math.random() * (screen.width - 32));
       shield.y = -shield.size;
+      // Add spawn glow effect
+      powerUpSpawnGlow.push({
+        x: shield.x,
+        y: shield.y,
+        life: 0.5,
+        color: COLORS.BOLT_BLUE,
+        size: shield.size
+      });
     }
   }
 
@@ -223,6 +243,14 @@
       laserPU.x = Math.floor(16 + Math.random() * (screen.width - 32));
       laserPU.y = -laserPU.size;
       dodgeSinceLastLaser = 0;
+      // Add spawn glow effect
+      powerUpSpawnGlow.push({
+        x: laserPU.x,
+        y: laserPU.y,
+        life: 0.5,
+        color: COLORS.NEON_GREEN,
+        size: laserPU.size
+      });
     }
   }
 
@@ -234,6 +262,14 @@
       speedBoost.visible = true;
       speedBoost.x = Math.floor(16 + Math.random() * (screen.width - 32));
       speedBoost.y = -speedBoost.size;
+      // Add spawn glow effect
+      powerUpSpawnGlow.push({
+        x: speedBoost.x,
+        y: speedBoost.y,
+        life: 0.5,
+        color: COLORS.ELECTRIC_ORANGE,
+        size: speedBoost.size
+      });
     }
   }
 
@@ -245,6 +281,14 @@
       scoreMultiplierPU.visible = true;
       scoreMultiplierPU.x = Math.floor(16 + Math.random() * (screen.width - 32));
       scoreMultiplierPU.y = -scoreMultiplierPU.size;
+      // Add spawn glow effect
+      powerUpSpawnGlow.push({
+        x: scoreMultiplierPU.x,
+        y: scoreMultiplierPU.y,
+        life: 0.5,
+        color: COLORS.CAUTION_YELLOW,
+        size: scoreMultiplierPU.size
+      });
     }
   }
 
@@ -524,15 +568,63 @@
     return stats;
   }
   
+  // XP System Functions
+  function getXPData() {
+    try {
+      const raw = localStorage.getItem(XP_KEY);
+      if (!raw) return { xp: 0, level: 1 };
+      return JSON.parse(raw);
+    } catch {
+      return { xp: 0, level: 1 };
+    }
+  }
+
+  function saveXPData(xp, level) {
+    try {
+      localStorage.setItem(XP_KEY, JSON.stringify({ xp, level }));
+    } catch {}
+  }
+
+  function addXP(amount) {
+    playerXP += amount;
+    // Check for level up
+    while (playerXP >= XP_PER_LEVEL) {
+      playerXP -= XP_PER_LEVEL;
+      playerLevel += 1;
+      // Trigger level up animation
+      levelUpAnimation.active = true;
+      levelUpAnimation.time = 0;
+      // Add level up visual celebration
+      streakMilestones.push({
+        text: `LEVEL UP! ${playerLevel}`,
+        x: screen.width / 2,
+        y: screen.height / 2,
+        life: 3.0,
+        scale: 1.0
+      });
+      haptic([30, 50, 30, 50, 30]);
+    }
+    saveXPData(playerXP, playerLevel);
+  }
+
   function renderStats() {
     if (!el.statsContent) return;
     const stats = getStats();
+    const xpData = getXPData();
     const avgScore = stats.gamesPlayed > 0 ? Math.floor(stats.totalScore / stats.gamesPlayed) : 0;
     const playTimeMinutes = Math.floor(stats.totalPlayTime / 60);
     const playTimeSeconds = Math.floor(stats.totalPlayTime % 60);
-    
+
     el.statsContent.innerHTML = `
       <div class="stats-grid">
+        <div class="stat-card">
+          <h3>Player Level</h3>
+          <p class="stat-value">${xpData.level}</p>
+        </div>
+        <div class="stat-card">
+          <h3>Current XP</h3>
+          <p class="stat-value">${xpData.xp} / ${XP_PER_LEVEL}</p>
+        </div>
         <div class="stat-card">
           <h3>Games</h3>
           <p class="stat-value">${stats.gamesPlayed}</p>
@@ -1048,20 +1140,50 @@
     // Deaths counter - shows total deaths in session
     ctx.fillStyle = COLORS.METALLIC_SILVER;
     ctx.fillText(`Deaths: ${deaths}`, 10, 70);
-    
+
+    // Player Level and XP Bar
     ctx.fillStyle = COLORS.NEON_GREEN;
-    ctx.fillText(`Level: ${currentLevel}`, 10, 70);
-    
+    ctx.fillText(`Level: ${playerLevel}`, 10, 100);
+
+    // XP Bar (compact and sleek)
+    const xpBarWidth = 180;
+    const xpBarHeight = 8;
+    const xpBarX = 10;
+    const xpBarY = 128;
+    const xpProgress = playerXP / XP_PER_LEVEL;
+
+    // XP Bar background
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.fillRect(xpBarX, xpBarY, xpBarWidth, xpBarHeight);
+
+    // XP Bar fill with gradient
+    const xpGradient = ctx.createLinearGradient(xpBarX, xpBarY, xpBarX + xpBarWidth * xpProgress, xpBarY);
+    xpGradient.addColorStop(0, COLORS.BOLT_BLUE);
+    xpGradient.addColorStop(1, COLORS.NEON_GREEN);
+    ctx.fillStyle = xpGradient;
+    ctx.fillRect(xpBarX, xpBarY, xpBarWidth * xpProgress, xpBarHeight);
+
+    // XP Bar border
+    ctx.strokeStyle = COLORS.METALLIC_SILVER;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(xpBarX, xpBarY, xpBarWidth, xpBarHeight);
+
+    // XP Text
+    ctx.fillStyle = COLORS.WHITE;
+    ctx.font = '12px Arial';
+    ctx.fillText(`${playerXP} / ${XP_PER_LEVEL} XP`, xpBarX + xpBarWidth + 8, xpBarY + 7);
+    ctx.font = 'bold 22px Arial';
+
     // Enhanced combo display with color scaling
     const streakColor = streak > 20 ? COLORS.NEON_GREEN : streak > 10 ? COLORS.CAUTION_YELLOW : COLORS.ELECTRIC_ORANGE;
     ctx.fillStyle = streakColor;
-    ctx.fillText(`Streak: ${streak}${streak > 0 ? ' 🔥' : ''}`, 10, 100);
-    
+    ctx.fillText(`Streak: ${streak}${streak > 0 ? ' 🔥' : ''}`, 10, 145);
+
     ctx.fillStyle = shield.active ? COLORS.BOLT_BLUE : '#cccccc';
-    ctx.fillText(`Shield: ${shield.active ? '🛡️ Ready' : '—'}`, 10, 130);
+    ctx.fillText(`Shield: ${shield.active ? '🛡️ Ready' : '—'}`, 10, 175);
     
     // Power-up status indicators
-    let statusY = 160;
+    let statusY = 205;
     if (speedBoost.active) {
       ctx.fillStyle = COLORS.ELECTRIC_ORANGE;
       ctx.font = '16px Arial';
@@ -1241,14 +1363,16 @@
           tracker.detected = true;
           const bonusPoints = Math.floor(5 * activeScoreMultiplier);
           score += bonusPoints;
+          // Award bonus XP for near-misses
+          addXP(3);
           playNearMiss();
           haptic([20, 30, 20]);
-          
+
           // Add near-miss visual feedback
           nearMissPopUps.push({
             x: bollardCenterX,
             y: bollardCenterY,
-            value: `NEAR MISS! +${bonusPoints}`,
+            value: `NEAR MISS! +${bonusPoints} +3 XP`,
             life: 1.5,
             vy: -80
           });
@@ -1297,16 +1421,37 @@
         const comboBonus = 1 + Math.min(12, Math.floor(streak / 5)); // Slightly gentler scaling for mobile fairness
         const baseScore = comboBonus * activeScoreMultiplier;
         score += baseScore;
+        // Award XP for dodging bollards (1 XP per dodge)
+        addXP(1);
         dodgeSinceLastLaser += 1;
         // Add score pop-up with combo indicator for high streaks
         const comboText = streak >= 20 ? ' 🔥' : streak >= 10 ? ' ⚡' : '';
         scorePopUps.push({
           x: b.x + bollard.width / 2,
           y: b.y + bollard.height / 2,
-          value: `+${baseScore}${comboText}`,
+          value: `+${baseScore}${comboText} +1 XP`,
           life: 1.2,
           vy: -60
         });
+
+        // Trigger combo flash for high streaks
+        if (streak >= 10 && streak % 5 === 0) {
+          comboFlash.active = true;
+          comboFlash.time = 0;
+          comboFlash.intensity = Math.min(0.3, 0.1 + (streak / 100));
+        }
+
+        // Streak milestone celebrations
+        if (streak % 25 === 0 && streak > 0) {
+          streakMilestones.push({
+            text: `${streak} STREAK! 🔥`,
+            x: screen.width / 2,
+            y: screen.height / 3,
+            life: 2.0,
+            scale: 1.5
+          });
+          haptic([50, 30, 50, 30, 50]);
+        }
         // On mobile, gradually increase bollard count for more challenge
         if (isCoarsePointer()) {
           const desired = score >= 8 ? 2 : 1;
@@ -1395,8 +1540,11 @@
             perfectRun = false; // Player took damage
             streak = 0;
             invulnerableFor = isCoarsePointer() ? 1.2 : 1.0; // slightly shorter to restore challenge
-            // Screen shake on damage (respect reduced motion)
-            screenShake.intensity = reducedMotion ? 0 : 10;
+            // Screen shake on damage (respect reduced motion) - ENHANCED
+            screenShake.intensity = reducedMotion ? 0 : 15;
+            // Hit flash effect
+            hitFlash.active = true;
+            hitFlash.time = 0;
             // Add damage particles (using object pool)
             for (let i = 0; i < 12 && particles.length < MAX_PARTICLES; i++) {
               const p = getParticle();
@@ -1431,6 +1579,20 @@
         gamePowerUps.total++;
         gamePowerUps.shields++;
         playClick();
+        // Particle burst on power-up collection
+        if (!reducedMotion) {
+          for (let j = 0; j < 12 && particles.length < MAX_PARTICLES; j++) {
+            const p = getParticle();
+            p.x = shield.x;
+            p.y = shield.y;
+            const angle = (Math.PI * 2 * j) / 12;
+            p.vx = Math.cos(angle) * 200;
+            p.vy = Math.sin(angle) * 200;
+            p.life = 1.0;
+            p.color = COLORS.BOLT_BLUE;
+            particles.push(p);
+          }
+        }
       }
       if (shield.y - shield.size / 2 > screen.height) {
         shield.visible = false;
@@ -1449,6 +1611,20 @@
         gamePowerUps.total++;
         gamePowerUps.lasers++;
         playClick();
+        // Particle burst on laser power-up collection
+        if (!reducedMotion) {
+          for (let j = 0; j < 12 && particles.length < MAX_PARTICLES; j++) {
+            const p = getParticle();
+            p.x = laserPU.x;
+            p.y = laserPU.y;
+            const angle = (Math.PI * 2 * j) / 12;
+            p.vx = Math.cos(angle) * 200;
+            p.vy = Math.sin(angle) * 200;
+            p.life = 1.0;
+            p.color = COLORS.NEON_GREEN;
+            particles.push(p);
+          }
+        }
       }
       if (laserPU.y - laserPU.size / 2 > screen.height) laserPU.visible = false;
     }
@@ -1471,6 +1647,20 @@
         gamePowerUps.total++;
         gamePowerUps.speedBoosts++;
         playClick();
+        // Particle burst on speed boost collection
+        if (!reducedMotion) {
+          for (let j = 0; j < 12 && particles.length < MAX_PARTICLES; j++) {
+            const p = getParticle();
+            p.x = speedBoost.x;
+            p.y = speedBoost.y;
+            const angle = (Math.PI * 2 * j) / 12;
+            p.vx = Math.cos(angle) * 200;
+            p.vy = Math.sin(angle) * 200;
+            p.life = 1.0;
+            p.color = COLORS.ELECTRIC_ORANGE;
+            particles.push(p);
+          }
+        }
       }
       if (speedBoost.y - speedBoost.size / 2 > screen.height) speedBoost.visible = false;
     }
@@ -1495,6 +1685,20 @@
         gamePowerUps.total++;
         gamePowerUps.multipliers++;
         playClick();
+        // Particle burst on multiplier collection
+        if (!reducedMotion) {
+          for (let j = 0; j < 12 && particles.length < MAX_PARTICLES; j++) {
+            const p = getParticle();
+            p.x = scoreMultiplierPU.x;
+            p.y = scoreMultiplierPU.y;
+            const angle = (Math.PI * 2 * j) / 12;
+            p.vx = Math.cos(angle) * 200;
+            p.vy = Math.sin(angle) * 200;
+            p.life = 1.0;
+            p.color = COLORS.CAUTION_YELLOW;
+            particles.push(p);
+          }
+        }
       }
       if (scoreMultiplierPU.y - scoreMultiplierPU.size / 2 > screen.height) scoreMultiplierPU.visible = false;
     }
@@ -1579,6 +1783,49 @@
       screenShake.y = 0;
     }
 
+    // Update combo flash effect
+    if (comboFlash.active) {
+      comboFlash.time += dt;
+      if (comboFlash.time >= 0.3) {
+        comboFlash.active = false;
+      }
+    }
+
+    // Update hit flash effect
+    if (hitFlash.active) {
+      hitFlash.time += dt;
+      if (hitFlash.time >= 0.2) {
+        hitFlash.active = false;
+      }
+    }
+
+    // Update level up animation
+    if (levelUpAnimation.active) {
+      levelUpAnimation.time += dt;
+      if (levelUpAnimation.time >= levelUpAnimation.duration) {
+        levelUpAnimation.active = false;
+      }
+    }
+
+    // Update power-up spawn glow effects
+    for (let i = powerUpSpawnGlow.length - 1; i >= 0; i--) {
+      const glow = powerUpSpawnGlow[i];
+      glow.life -= dt;
+      if (glow.life <= 0) {
+        powerUpSpawnGlow.splice(i, 1);
+      }
+    }
+
+    // Update streak milestone celebrations
+    for (let i = streakMilestones.length - 1; i >= 0; i--) {
+      const milestone = streakMilestones[i];
+      milestone.life -= dt;
+      milestone.scale += dt * 0.2; // Grow effect
+      if (milestone.life <= 0) {
+        streakMilestones.splice(i, 1);
+      }
+    }
+
     if (health <= 0) {
       deaths++; // Increment death counter
       running = false;
@@ -1609,8 +1856,14 @@
         });
       }
       
+      // Death recap with detailed stats
+      const deathRecapStats = `
+        Score: ${finalScore} | Streak: ${bestStreak} | Dodged: ${gameBollardsDodged}
+        Power-ups: ${gamePowerUps.total} | Time: ${Math.floor(playTime)}s
+        Player Level: ${playerLevel} | XP: ${playerXP}/${XP_PER_LEVEL}
+      `;
       el.finalScore.textContent = `Your Final Score: ${finalScore} (Best Streak: ${bestStreak})`;
-      el.finalLevel.textContent = `You Reached Level: ${currentLevel}`;
+      el.finalLevel.textContent = `You Reached Level: ${currentLevel}\n${deathRecapStats}`;
       showOverlay('gameOver');
     }
   }
@@ -1922,10 +2175,67 @@
       }
       ctx.restore();
     }
+
+    // Draw power-up spawn glow effects
+    if (running && !reducedMotion && powerUpSpawnGlow.length > 0) {
+      ctx.save();
+      for (const glow of powerUpSpawnGlow) {
+        const alpha = Math.max(0, glow.life * 2);
+        if (alpha <= 0) continue;
+        ctx.globalAlpha = alpha;
+        const gradient = ctx.createRadialGradient(glow.x, glow.y, 0, glow.x, glow.y, glow.size * 3);
+        gradient.addColorStop(0, glow.color);
+        gradient.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.arc(glow.x, glow.y, glow.size * 3, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+
+    // Draw streak milestone celebrations
+    if (running && streakMilestones.length > 0) {
+      ctx.save();
+      for (const milestone of streakMilestones) {
+        const alpha = Math.max(0, milestone.life / 2.0);
+        if (alpha <= 0) continue;
+        ctx.globalAlpha = alpha;
+        ctx.font = `bold ${Math.floor(36 * milestone.scale)}px Arial`;
+        ctx.fillStyle = COLORS.CAUTION_YELLOW;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.shadowColor = COLORS.ELECTRIC_ORANGE;
+        ctx.shadowBlur = 15;
+        ctx.fillText(milestone.text, milestone.x, milestone.y);
+      }
+      ctx.restore();
+    }
+
     ctx.globalAlpha = 1.0;
-    
+
     ctx.restore(); // Restore from screen shake transform
-    
+
+    // Combo flash overlay (full screen flash for combo milestones)
+    if (comboFlash.active && !reducedMotion) {
+      ctx.save();
+      const flashAlpha = comboFlash.intensity * (1 - comboFlash.time / 0.3);
+      ctx.globalAlpha = flashAlpha;
+      ctx.fillStyle = COLORS.CAUTION_YELLOW;
+      ctx.fillRect(0, 0, screen.width, screen.height);
+      ctx.restore();
+    }
+
+    // Hit flash overlay (full screen red flash on damage)
+    if (hitFlash.active && !reducedMotion) {
+      ctx.save();
+      const flashAlpha = 0.4 * (1 - hitFlash.time / 0.2);
+      ctx.globalAlpha = flashAlpha;
+      ctx.fillStyle = COLORS.DEEP_RED;
+      ctx.fillRect(0, 0, screen.width, screen.height);
+      ctx.restore();
+    }
+
     // HUD (drawn without screen shake)
     drawHUD();
 
@@ -1952,15 +2262,31 @@
   let lastTime = performance.now();
   function loop(now) {
     try {
-      // Calculate FPS for performance monitoring
+      // Calculate FPS and frame time for performance monitoring
       frameCount++;
+      const frameDelta = now - lastTime;
+      frameTimeAccumulator += frameDelta;
+
+      // Track slow frames (below 60fps = frame time > 16.67ms)
+      if (frameDelta > 16.67) {
+        slowFrameCount++;
+      }
+
       if (now - lastFrameTime >= 1000) {
         fps = frameCount;
+        const avgFrameTime = frameTimeAccumulator / frameCount;
+        // Performance warning if avg frame time indicates < 60fps
+        if (avgFrameTime > 17 && !window.__BS_PERF_WARNED) {
+          console.warn(`Performance: Avg frame time ${avgFrameTime.toFixed(2)}ms (${Math.floor(1000/avgFrameTime)}fps)`);
+          window.__BS_PERF_WARNED = true;
+        }
         frameCount = 0;
+        frameTimeAccumulator = 0;
+        slowFrameCount = 0;
         lastFrameTime = now;
       }
-      
-      const dt = Math.min(0.05, (now - lastTime) / 1000); // clamp dt to avoid spikes
+
+      const dt = Math.min(0.05, frameDelta / 1000); // clamp dt to avoid spikes
       lastTime = now;
       update(dt);
       draw();
@@ -2389,6 +2715,12 @@
 
   // Kick things off
   initBollards();
+  // Load XP data from localStorage
+  try {
+    const xpData = getXPData();
+    playerXP = xpData.xp;
+    playerLevel = xpData.level;
+  } catch {}
   // Show tutorial once for first-time users
   try {
     const seen = localStorage.getItem('bollard-striker-seen-tutorial');
