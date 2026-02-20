@@ -1242,9 +1242,10 @@
     // Smooth lane switching with input buffering
     const switchTime = SWITCH_TIME_MS / 1000; // Convert to seconds
     
-    // Handle input for lane switching (keyboard/button controls)
-    if (!tiltEnabled) {
-      // Check for new input
+    // Handle input for lane switching: use buttons/touch when pressed, otherwise tilt if enabled
+    const useButtonInput = player.leftPressed || player.rightPressed;
+    if (!tiltEnabled || useButtonInput) {
+      // Check for new input (keyboard, pads, or touch zones)
       if (player.leftPressed && !player.isSwitching) {
         // Try to switch left
         const currentLane = Math.max(0, Math.min(lanes.count - 1, Math.floor(player.x / lanes.width)));
@@ -2349,13 +2350,14 @@
   }, { passive: false });
   document.addEventListener('dblclick', (e) => e.preventDefault());
 
-  // On-screen pads with better touch handling
+  // On-screen pads: touch, mouse, and pointer events so buttons work on all devices
   const handlePadStart = (direction) => (e) => {
     e.preventDefault();
     e.stopPropagation();
     if (direction === 'left') player.leftPressed = true;
     else player.rightPressed = true;
     haptic(10);
+    if (e.target.setPointerCapture && e.pointerId != null) e.target.setPointerCapture(e.pointerId);
   };
   const handlePadEnd = (direction) => (e) => {
     e.preventDefault();
@@ -2363,20 +2365,21 @@
     if (direction === 'left') player.leftPressed = false;
     else player.rightPressed = false;
   };
-  
-  el.moveLeft.addEventListener('touchstart', handlePadStart('left'), { passive: false });
-  el.moveLeft.addEventListener('touchend', handlePadEnd('left'), { passive: false });
-  el.moveLeft.addEventListener('touchcancel', handlePadEnd('left'), { passive: false });
-  el.moveLeft.addEventListener('mousedown', handlePadStart('left'));
-  el.moveLeft.addEventListener('mouseup', handlePadEnd('left'));
-  el.moveLeft.addEventListener('mouseleave', handlePadEnd('left'));
-  
-  el.moveRight.addEventListener('touchstart', handlePadStart('right'), { passive: false });
-  el.moveRight.addEventListener('touchend', handlePadEnd('right'), { passive: false });
-  el.moveRight.addEventListener('touchcancel', handlePadEnd('right'), { passive: false });
-  el.moveRight.addEventListener('mousedown', handlePadStart('right'));
-  el.moveRight.addEventListener('mouseup', handlePadEnd('right'));
-  el.moveRight.addEventListener('mouseleave', handlePadEnd('right'));
+  const bindPad = (element, direction) => {
+    if (!element) return;
+    element.addEventListener('touchstart', handlePadStart(direction), { passive: false });
+    element.addEventListener('touchend', handlePadEnd(direction), { passive: false });
+    element.addEventListener('touchcancel', handlePadEnd(direction), { passive: false });
+    element.addEventListener('pointerdown', handlePadStart(direction), { passive: false });
+    element.addEventListener('pointerup', handlePadEnd(direction), { passive: false });
+    element.addEventListener('pointerleave', handlePadEnd(direction), { passive: false });
+    element.addEventListener('pointercancel', handlePadEnd(direction), { passive: false });
+    element.addEventListener('mousedown', handlePadStart(direction));
+    element.addEventListener('mouseup', handlePadEnd(direction));
+    element.addEventListener('mouseleave', handlePadEnd(direction));
+  };
+  bindPad(el.moveLeft, 'left');
+  bindPad(el.moveRight, 'right');
 
   // Full-width touch zones for left/right halves with improved handling
   if (el.zoneLeft && el.zoneRight) {
