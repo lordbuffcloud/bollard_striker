@@ -76,8 +76,8 @@ canvas#game {
 }
 
 /* Touch zones fill the canvas area to allow half-screen controls */
-.touch-zones { position: absolute; inset: 0; display: none; }
-.touch-zones .zone { position: absolute; top: 0; bottom: 0; touch-action: none; }
+.touch-zones { position: absolute; inset: 0; display: none; z-index: 0; }
+.touch-zones .zone { position: absolute; top: 0; bottom: 0; touch-action: none; pointer-events: auto; }
 .touch-zones .left { left: 0; width: 50%; }
 .touch-zones .right { right: 0; width: 50%; }
 
@@ -212,7 +212,7 @@ canvas#game {
 .howto h3 { margin: 0 0 8px; }
 .howto ul { margin: 0; padding-left: 18px; }
 
-.mobile-controls { display: none; gap: 16px; margin: 12px auto 0; width: 100%; max-width: 960px; justify-content: center; }
+.mobile-controls { display: none; gap: 16px; margin: 12px auto 0; width: 100%; max-width: 960px; justify-content: center; position: relative; z-index: 2; }
 .pad {
   font-size: 16px;
   letter-spacing: 1px;
